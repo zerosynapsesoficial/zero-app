@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Zero - Comunidade Regional</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Splash Screen -->
+        <section id="splash" class="screen active">
+            <div class="splash-content">
+                <h1 class="logo">Zero</h1>
+                <div class="loader"></div>
+            </div>
+        </section>
+
+        <!-- Onboarding -->
+        <section id="onboarding" class="screen">
+            <div class="slides" id="onboarding-slides">
+                <!-- Slides will be injected by JS -->
+            </div>
+            <div class="onboarding-footer">
+                <div class="dots" id="onboarding-dots"></div>
+                <button id="next-onboarding" class="btn btn-primary">Próximo</button>
+            </div>
+        </section>
+
+        <!-- Auth: Login -->
+        <section id="login" class="screen">
+            <div class="auth-container">
+                <h2>Bem-vindo de volta</h2>
+                <p>Conecte-se à sua comunidade regional.</p>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" placeholder="seu@email.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Senha</label>
+                        <input type="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Entrar</button>
+                </form>
+                <div class="auth-divider"><span>ou</span></div>
+                <!-- Official Google Sign-In Button Container -->
+                <div id="google-login-container" style="display: flex; justify-content: center; margin: 1rem 0;">
+                    <div id="g_id_onload"
+                         data-client_id="808404701219-bvmj9ggtklqcj2ph5294aqgm14910vmb.apps.googleusercontent.com"
+                         data-context="signin"
+                         data-ux_mode="popup"
+                         data-callback="handleCredentialResponse"
+                         data-auto_prompt="false">
+                    </div>
+                    <div class="g_id_signin"
+                         data-type="standard"
+                         data-shape="rectangular"
+                         data-theme="outline"
+                         data-text="signin_with"
+                         data-size="large"
+                         data-logo_alignment="left">
+                    </div>
+                </div>
+                <p class="auth-footer">Não tem conta? <a href="#register">Cadastre-se</a></p>
+            </div>
+        </section>
+
+        <!-- Auth: Cadastro -->
+        <section id="register" class="screen">
+            <div class="auth-container">
+                <button class="back-btn" onclick="location.hash='#login'" style="align-self: flex-start; padding: 0;">←</button>
+                <h2>Criar Conta</h2>
+                <p>Junte-se à fraternidade Zero.</p>
+                <form id="register-form">
+                    <div class="input-group">
+                        <label>Nome Completo</label>
+                        <input type="text" placeholder="Seu nome" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" placeholder="seu@email.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Senha</label>
+                        <input type="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- User Type Selection -->
+        <section id="user-type-selection" class="screen">
+            <div class="auth-container">
+                <h2>Quase lá!</h2>
+                <p>Como você deseja usar o Zero?</p>
+                <div class="user-type-cards">
+                    <div class="type-card" onclick="location.hash='#register-client'">
+                        <div class="type-icon">🛍️</div>
+                        <h3>Cliente</h3>
+                        <p>Quero encontrar profissionais e contratar serviços.</p>
+                    </div>
+                    <div class="type-card" onclick="location.hash='#register-professional'">
+                        <div class="type-icon">🛠️</div>
+                        <h3>Profissional</h3>
+                        <p>Quero oferecer meus serviços e gerenciar minha agenda.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Register: Client -->
+        <section id="register-client" class="screen scrollable">
+            <div class="auth-container">
+                <button class="back-btn" onclick="location.hash='#user-type-selection'">←</button>
+                <h2>Perfil de Cliente</h2>
+                <form id="form-client">
+                    <div class="profile-pic-upload" onclick="document.getElementById('client-photo-input').click()">
+                        <div class="pic-placeholder" id="client-photo-preview">📸</div>
+                        <input type="file" id="client-photo-input" hidden accept="image/*">
+                        <span>Foto de Perfil</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Nome Completo</label>
+                        <input type="text" id="client-name" placeholder="Seu nome" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="client-email" placeholder="seu@email.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Telefone / WhatsApp</label>
+                        <input type="tel" placeholder="(11) 99999-9999" required>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Cidade / Região</label>
+                            <input type="text" placeholder="Ex: São Paulo, SP" required>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Endereço (Opcional)</label>
+                        <input type="text" placeholder="Rua, Número, Bairro">
+                    </div>
+                    <div class="input-group">
+                        <label>Data de Nascimento</label>
+                        <input type="date" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Preferências de Serviços</label>
+                        <div class="chips-container" id="client-preferences">
+                            <label class="chip"><input type="checkbox" value="beleza"> Beleza</label>
+                            <label class="chip"><input type="checkbox" value="reformas"> Reformas</label>
+                            <label class="chip"><input type="checkbox" value="saude"> Saúde</label>
+                            <label class="chip"><input type="checkbox" value="tecnologia"> Tecnologia</label>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Senha</label>
+                        <input type="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Concluir Cadastro</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Register: Professional -->
+        <section id="register-professional" class="screen scrollable">
+            <div class="auth-container">
+                <button class="back-btn" onclick="location.hash='#user-type-selection'">←</button>
+                <h2>Perfil Profissional</h2>
+                <form id="form-professional">
+                    <div class="profile-uploads">
+                        <div class="profile-pic-upload" onclick="document.getElementById('prof-photo-input').click()">
+                            <div class="pic-placeholder" id="prof-photo-preview">📸</div>
+                            <input type="file" id="prof-photo-input" hidden accept="image/*">
+                            <span>Sua Foto</span>
+                        </div>
+                        <div class="profile-pic-upload" onclick="document.getElementById('prof-logo-input').click()">
+                            <div class="pic-placeholder" id="prof-logo-preview">🏢</div>
+                            <input type="file" id="prof-logo-input" hidden accept="image/*">
+                            <span>Logo (Opcional)</span>
+                        </div>
+                    </div>
+
+                    <div class="form-section-title">Dados Básicos</div>
+                    <div class="input-group">
+                        <label>Nome Completo</label>
+                        <input type="text" id="prof-name" placeholder="Seu nome" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Nome Profissional / Empresa</label>
+                        <input type="text" placeholder="Como você é conhecido?" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="prof-email" placeholder="seu@email.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Telefone / WhatsApp</label>
+                        <input type="tel" placeholder="(11) 99999-9999" required>
+                    </div>
+
+                    <div class="form-section-title">Atuação</div>
+                    <div class="input-group">
+                        <label>Categoria Profissional</label>
+                        <select required>
+                            <option value="">Selecione...</option>
+                            <option value="beleza">Beleza & Bem Estar</option>
+                            <option value="reformas">Reformas & Reparos</option>
+                            <option value="saude">Saúde</option>
+                            <option value="tecnologia">Tecnologia & Digital</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Especialidades</label>
+                        <input type="text" placeholder="Ex: Manicure, Pintura, Psicologia">
+                    </div>
+                    <div class="input-group">
+                        <label>Descrição Profissional (Bio)</label>
+                        <textarea placeholder="Conte um pouco sobre seu trabalho..." rows="3" required></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>Anos de Experiência</label>
+                        <input type="number" placeholder="Ex: 5" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Cidade / Região de Atendimento</label>
+                        <input type="text" placeholder="Ex: São Paulo e Grande ABC" required>
+                    </div>
+
+                    <div class="form-section-title">Portfólio & Redes</div>
+                    <div class="input-group">
+                        <label>Portfólio / Fotos (Links ou Upload)</label>
+                        <input type="text" placeholder="Link do Instagram ou Drive">
+                    </div>
+                    <div class="input-group">
+                        <label>Redes Sociais</label>
+                        <input type="text" placeholder="@seu_perfil">
+                    </div>
+
+                    <div class="form-section-title">Atendimento & Preços</div>
+                    <div class="input-group">
+                        <label>Horário de Atendimento</label>
+                        <input type="text" placeholder="Ex: Seg a Sex, 09h às 18h" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Faixa de Preço</label>
+                        <input type="text" placeholder="Ex: A partir de R$ 80,00" required>
+                    </div>
+
+                    <div class="form-section-title">Financeiro & Verificação</div>
+                    <div class="input-group">
+                        <label>Chave Pix / Dados Bancários</label>
+                        <input type="text" placeholder="Sua chave para pagamentos" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Documento de Verificação (RG/CPF)</label>
+                        <input type="file" required>
+                        <small>Para segurança da comunidade.</small>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>Senha</label>
+                        <input type="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Finalizar Perfil Profissional</button>
+                </form>
+            </div>
+        </section>
+
+        <main id="main-content" class="screen">
+            <!-- Nav Bar (Bottom) -->
+            <nav class="bottom-nav">
+                <a href="#home" class="nav-item active" data-screen="home">
+                    <span class="icon">🏠</span>
+                    <span class="label">Início</span>
+                </a>
+                <a href="#busca" class="nav-item" data-screen="busca">
+                    <span class="icon">🔍</span>
+                    <span class="label">Busca</span>
+                </a>
+                <a href="#chat" class="nav-item" data-screen="chat">
+                    <span class="icon">💬</span>
+                    <span class="label">Chat</span>
+                </a>
+                <a href="#perfil" class="nav-item" data-screen="perfil">
+                    <span class="icon">👤</span>
+                    <span class="label">Perfil</span>
+                </a>
+            </nav>
+
+            <!-- Home Screen -->
+            <div id="home" class="sub-screen active">
+                <header class="home-header">
+                    <div>
+                        <span class="greeting">Olá, Lucas</span>
+                        <h2 class="location-current">📍 São Paulo, SP</h2>
+                    </div>
+                    <button class="btn-icon">🔔</button>
+                </header>
+                
+                <div class="search-bar-trigger" onclick="location.hash='#busca'">
+                    <span>🔍 Buscar profissionais...</span>
+                </div>
+
+                <div class="categories-grid" id="home-categories">
+                    <!-- Injected by JS -->
+                </div>
+
+                <section class="featured-section">
+                    <div class="section-header">
+                        <h3>Destaques</h3>
+                        <a href="#busca">Ver tudo</a>
+                    </div>
+                    <div class="featured-scroll" id="featured-professionals">
+                        <!-- Injected by JS -->
+                    </div>
+                </section>
+            </div>
+
+            <!-- Busca Screen -->
+            <div id="busca" class="sub-screen">
+                <header class="search-header">
+                    <div class="search-input-wrapper">
+                        <input type="text" id="search-input" placeholder="O que você procura?">
+                        <button class="filter-btn">⚙️</button>
+                    </div>
+                </header>
+                <div class="search-results" id="search-results">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- Chat Screen -->
+            <div id="chat" class="sub-screen">
+                <header class="screen-header">
+                    <h3>Mensagens</h3>
+                </header>
+                <div class="chat-list" id="chat-list">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- User Profile Screen -->
+            <div id="perfil" class="sub-screen">
+                <header class="profile-header">
+                    <div class="profile-avatar" id="user-avatar-large"></div>
+                    <h3 id="user-name-display">Lucas Mendes</h3>
+                    <p id="user-email-display">lucas@email.com</p>
+                </header>
+                <div class="profile-menu">
+                    <div class="menu-item" onclick="location.hash='#admin'">
+                        <span>📊 Painel Admin</span>
+                        <span>❯</span>
+                    </div>
+                    <div class="menu-item" onclick="location.hash='#agendamentos-lista'">
+                        <span>📅 Meus Agendamentos</span>
+                        <span>❯</span>
+                    </div>
+                    <div class="menu-item" onclick="location.hash='#configuracoes'">
+                        <span>⚙️ Configurações</span>
+                        <span>❯</span>
+                    </div>
+                    <div class="menu-item logout" onclick="location.hash='#login'">
+                        <span>🚪 Sair</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Agendamento (Overlay) -->
+        <section id="agendamento" class="screen overlay">
+            <header class="overlay-header">
+                <button class="back-btn" onclick="history.back()">←</button>
+                <h3>Agendar Horário</h3>
+            </header>
+            <div class="overlay-content">
+                <div class="calendar-mock">
+                    <h4>Maio 2024</h4>
+                    <div class="days-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 1rem; text-align: center;">
+                        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                        <!-- Mock days -->
+                        <div style="padding: 8px; color: #ccc;">28</div>
+                        <div style="padding: 8px; color: #ccc;">29</div>
+                        <div style="padding: 8px; color: #ccc;">30</div>
+                        <div style="padding: 8px; background: var(--primary); color: white; border-radius: 8px;">1</div>
+                        <div style="padding: 8px;">2</div><div style="padding: 8px;">3</div><div style="padding: 8px;">4</div>
+                    </div>
+                </div>
+                <div class="time-slots" style="margin-top: 2rem;">
+                    <h4>Horários Disponíveis</h4>
+                    <div id="slots-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 1rem;"></div>
+                </div>
+            </div>
+            <div class="overlay-footer">
+                <button class="btn btn-primary" onclick="alert('Agendamento realizado com sucesso!'); location.hash='#home'">Confirmar Agendamento</button>
+            </div>
+        </section>
+
+        <!-- Configurações (Overlay) -->
+        <section id="configuracoes" class="screen overlay">
+            <header class="overlay-header">
+                <button class="back-btn" onclick="history.back()">←</button>
+                <h3>Configurações</h3>
+            </header>
+            <div class="overlay-content">
+                <div class="settings-group">
+                    <div class="menu-item"><span>Notificações</span> <input type="checkbox" checked></div>
+                    <div class="menu-item"><span>Modo Escuro</span> <input type="checkbox"></div>
+                    <div class="menu-item"><span>Privacidade</span> <span>❯</span></div>
+                    <div class="menu-item"><span>Ajuda & Suporte</span> <span>❯</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Professional Details (Overlay) -->
+        <section id="professional-detail" class="screen overlay">
+            <header class="overlay-header">
+                <button class="back-btn" onclick="history.back()">←</button>
+                <h3>Perfil</h3>
+                <button class="share-btn">🔗</button>
+            </header>
+            <div class="overlay-content" id="prof-detail-content">
+                <!-- Injected by JS -->
+            </div>
+            <div class="overlay-footer">
+                <button class="btn btn-primary" id="btn-agendar">Agendar Agora</button>
+            </div>
+        </section>
+
+        <!-- Chat Detail (Overlay) -->
+        <section id="chat-detail" class="screen overlay">
+            <header class="overlay-header">
+                <button class="back-btn" onclick="history.back()">←</button>
+                <div class="chat-header-info">
+                    <div class="small-avatar" id="chat-avatar"></div>
+                    <h4 id="chat-name">Ana Oliveira</h4>
+                </div>
+            </header>
+            <div class="chat-messages" id="chat-messages-container">
+                <!-- Injected by JS -->
+            </div>
+            <div class="chat-input-area">
+                <input type="text" placeholder="Sua mensagem...">
+                <button class="send-btn">➔</button>
+            </div>
+        </section>
+
+        <!-- Admin Dashboard (Overlay) -->
+        <section id="admin" class="screen overlay">
+            <header class="overlay-header">
+                <button class="back-btn" onclick="history.back()">←</button>
+                <h3>Painel Admin</h3>
+            </header>
+            <div class="overlay-content">
+                <div class="admin-stats-grid" id="admin-stats"></div>
+                <div class="admin-section">
+                    <h4>Pendentes de Aprovação</h4>
+                    <div id="pending-list"></div>
+                </div>
+            </div>
+        </section>
+    <script src="js/data.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
