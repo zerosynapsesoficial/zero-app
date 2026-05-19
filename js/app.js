@@ -8,8 +8,8 @@ let supabaseClient;
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- Initialize Supabase ---
-    // Hardcoding keys temporarily to fix the "Invalid API key" issue
-    const url = "https://oryguljbqcphbtiapvwk.supabase.co";
+    // Hardcoding keys and using same-origin proxy to bypass CORS, local firewalls, and adblockers
+    const url = window.location.origin + "/api/supabase";
     const key = "sb_publishable_WaiQI8T9aLg9iJkV3nEZBg_C5M24-Z5";
 
     if (window.supabase) {
