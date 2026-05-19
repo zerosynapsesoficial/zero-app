@@ -3517,7 +3517,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 
                 const result = await Promise.race([
                     query.order('created_at', { ascending: false }),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 5000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
                 ]);
                 
                 if (result.error) throw result.error;
@@ -3823,7 +3823,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     .from('messages')
                     .select('*')
                     .order('created_at', { ascending: false }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 5000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
             ]);
             
             let msgError = result.error;
@@ -6667,6 +6667,33 @@ window.renderAgendamentoScreen = async function() {
         const btnConfirm = document.getElementById('btn-confirm-agendamento');
         
         let selectedTime = null;
+        let professionalBookedSlotsCache = {};
+
+        async function prefetchProfessionalSlots(profId) {
+            professionalBookedSlotsCache = {};
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const { data } = await supabaseClient
+                    .from('appointments')
+                    .select('date, time')
+                    .eq('professional_id', profId)
+                    .gte('date', today)
+                    .neq('status', 'cancelled');
+                
+                if (data) {
+                    data.forEach(app => {
+                        if (!professionalBookedSlotsCache[app.date]) {
+                            professionalBookedSlotsCache[app.date] = [];
+                        }
+                        if (!professionalBookedSlotsCache[app.date].includes(app.time)) {
+                            professionalBookedSlotsCache[app.date].push(app.time);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("Background prefetch failed:", err);
+            }
+        }
 
         // Set min attribute to today's local date to avoid back-dated bookings
         const now = new Date();
@@ -6676,32 +6703,32 @@ window.renderAgendamentoScreen = async function() {
         const today = `${year}-${month}-${day}`;
         if (dateInput) dateInput.setAttribute('min', today);
 
-        // Set initial state based on value
-        if (profSelect.value) {
-            profSelect.style.fontSize = '1.1rem';
-            const serviceBox = document.getElementById('prof-service-info-box');
-            const serviceNameEl = document.getElementById('prof-service-name');
-            const servicePriceEl = document.getElementById('prof-service-price');
-            const nameEl = document.getElementById('prof-selected-name');
-            const phoneEl = document.getElementById('prof-selected-phone');
-            const addressEl = document.getElementById('prof-selected-address');
-
-            const prof = (window.loadedProfessionalsList || []).find(p => p.id === profSelect.value);
-            if (prof && serviceBox && serviceNameEl && servicePriceEl) {
-                const specialty = prof.specialty || 'Serviço Personalizado';
-                const priceVal = prof.price ? Number(prof.price).toFixed(2).replace('.', ',') : '45,00';
-                serviceNameEl.innerText = specialty.toUpperCase();
-                servicePriceEl.innerText = `R$ ${priceVal}`;
-                
-                if (nameEl) nameEl.innerText = prof.full_name;
-                if (phoneEl) phoneEl.innerText = `📞 ${prof.phone || '(11) 99999-9999'}`;
-                if (addressEl) {
-                    addressEl.innerText = `📍 ${prof.address ? `${prof.address}${prof.city ? ' - ' + prof.city : ''}` : `Av. Paulista, 1000 - ${prof.city || 'São Paulo, SP'}`}`;
+            if (profSelect.value) {
+                profSelect.style.fontSize = '1.1rem';
+                prefetchProfessionalSlots(profSelect.value); // Trigger background pre-fetch immediately if pre-selected
+                const serviceBox = document.getElementById('prof-service-info-box');
+                const serviceNameEl = document.getElementById('prof-service-name');
+                const servicePriceEl = document.getElementById('prof-service-price');
+                const nameEl = document.getElementById('prof-selected-name');
+                const phoneEl = document.getElementById('prof-selected-phone');
+                const addressEl = document.getElementById('prof-selected-address');
+        
+                const prof = (window.loadedProfessionalsList || []).find(p => p.id === profSelect.value);
+                if (prof && serviceBox && serviceNameEl && servicePriceEl) {
+                    const specialty = prof.specialty || 'Serviço Personalizado';
+                    const priceVal = prof.price ? Number(prof.price).toFixed(2).replace('.', ',') : '45,00';
+                    serviceNameEl.innerText = specialty.toUpperCase();
+                    servicePriceEl.innerText = `R$ ${priceVal}`;
+                    
+                    if (nameEl) nameEl.innerText = prof.full_name;
+                    if (phoneEl) phoneEl.innerText = `📞 ${prof.phone || '(11) 99999-9999'}`;
+                    if (addressEl) {
+                        addressEl.innerText = `📍 ${prof.address ? `${prof.address}${prof.city ? ' - ' + prof.city : ''}` : `Av. Paulista, 1000 - ${prof.city || 'São Paulo, SP'}`}`;
+                    }
+        
+                    serviceBox.style.display = 'block';
                 }
-
-                serviceBox.style.display = 'block';
-            }
-        } else {
+            } else {
             profSelect.style.fontSize = '0.85rem';
             const serviceBox = document.getElementById('prof-service-info-box');
             if (serviceBox) serviceBox.style.display = 'none';
@@ -6730,6 +6757,7 @@ window.renderAgendamentoScreen = async function() {
 
             if (profSelect.value) {
                 profSelect.style.fontSize = '1.1rem';
+                prefetchProfessionalSlots(profSelect.value); // Trigger background pre-fetch immediately upon choice
                 
                 // Exibir serviço e preço do profissional escolhido
                 const serviceBox = document.getElementById('prof-service-info-box');
@@ -6772,16 +6800,83 @@ window.renderAgendamentoScreen = async function() {
         dateInput.addEventListener('change', async () => {
             if (!dateInput.value) return;
             timeGroup.style.display = 'block';
-            timeSlotsContainer.innerHTML = '<span class="loader-mini" style="margin:0 auto; grid-column: span 3;"></span>';
-            btnConfirm.style.display = 'none';
             selectedTime = null;
 
             const profId = profSelect.value;
             const dateVal = dateInput.value;
 
+            // Instantly render helper function
+            const renderSlots = (booked) => {
+                const allSlots = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+                timeSlotsContainer.innerHTML = '';
+                
+                if (allSlots.every(s => booked.includes(s))) {
+                    timeSlotsContainer.innerHTML = '<p style="grid-column: span 3; color: #f87171; text-align: center; font-size: 0.85rem;">Agenda lotada para este dia.</p>';
+                    return;
+                }
+
+                allSlots.forEach(slot => {
+                    const isBooked = booked.includes(slot);
+                    const btn = document.createElement('button');
+                    btn.style.padding = '12px 10px';
+                    btn.style.borderRadius = '14px';
+                    btn.style.border = '1px solid #333';
+                    btn.style.fontWeight = '800';
+                    btn.style.fontSize = '0.9rem';
+                    btn.style.position = 'relative';
+                    btn.style.transition = 'all 0.2s ease';
+                    btn.style.boxSizing = 'border-box';
+                    btn.style.whiteSpace = 'pre-line';
+                    btn.style.lineHeight = '1.3';
+
+                    if (isBooked) {
+                        btn.innerText = `${slot}\n[OCUPADO]`;
+                        btn.style.cursor = 'not-allowed';
+                        btn.style.background = 'rgba(239, 68, 68, 0.04)';
+                        btn.style.color = 'rgba(239, 68, 68, 0.45)';
+                        btn.style.borderColor = 'rgba(239, 68, 68, 0.18)';
+                        btn.style.textDecoration = 'line-through';
+                        btn.style.fontSize = '0.75rem';
+                    } else {
+                        btn.innerText = slot;
+                        btn.style.cursor = 'pointer';
+                        btn.style.background = '#000';
+                        btn.style.color = '#fff';
+                        
+                        btn.onclick = () => {
+                            Array.from(timeSlotsContainer.children).forEach(c => {
+                                if(c.style.cursor !== 'not-allowed') {
+                                    c.style.background = '#000';
+                                    c.style.color = '#fff';
+                                    c.style.borderColor = '#333';
+                                }
+                            });
+                            btn.style.background = 'rgba(176, 133, 245, 0.1)';
+                            btn.style.color = '#b085f5';
+                            btn.style.borderColor = '#b085f5';
+                            selectedTime = slot;
+                            btnConfirm.style.display = 'block';
+                        };
+                    }
+                    timeSlotsContainer.appendChild(btn);
+                });
+            };
+
+            // Stale-While-Revalidate: If we have pre-fetched slots for this date, show them INSTANTLY in 0ms!
+            const cachedSlots = professionalBookedSlotsCache[dateVal];
+            if (cachedSlots !== undefined) {
+                console.log("Stale-While-Revalidate: Loaded slots from pre-fetch cache instantly.");
+                renderSlots(cachedSlots);
+            } else {
+                // Otherwise show the micro loader while loading the very first time
+                timeSlotsContainer.innerHTML = '<span class="loader-mini" style="margin:0 auto; grid-column: span 3;"></span>';
+            }
+            
+            btnConfirm.style.display = 'none';
+
+            // Query in background to revalidate slots and ensure absolute consistency
             let bookedTimes = [];
             try {
-                // Fetch booked times with a 6-second timeout to prevent infinite freezing
                 const query = supabaseClient
                     .from('appointments')
                     .select('time')
@@ -6791,71 +6886,26 @@ window.renderAgendamentoScreen = async function() {
 
                 const result = await Promise.race([
                     query,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000))
                 ]);
 
                 if (result.error) throw result.error;
                 bookedTimes = (result.data || []).map(a => a.time);
-            } catch (err) {
-                console.warn("⚠️ Falha ou Timeout ao buscar horários no Supabase (usando agenda vazia de fallback):", err.message || err);
-                bookedTimes = []; // Fallback to no bookings so they can still try to book!
-            }
 
-            // Generate slots
-            const allSlots = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-            
-            timeSlotsContainer.innerHTML = '';
-            
-            if (allSlots.every(s => bookedTimes.includes(s))) {
-                timeSlotsContainer.innerHTML = '<p style="grid-column: span 3; color: #f87171; text-align: center; font-size: 0.85rem;">Agenda lotada para este dia.</p>';
-                return;
-            }
+                // Update cache
+                professionalBookedSlotsCache[dateVal] = bookedTimes;
 
-            allSlots.forEach(slot => {
-                const isBooked = bookedTimes.includes(slot);
-                const btn = document.createElement('button');
-                btn.style.padding = '12px 10px';
-                btn.style.borderRadius = '14px';
-                btn.style.border = '1px solid #333';
-                btn.style.fontWeight = '800';
-                btn.style.fontSize = '0.9rem';
-                btn.style.position = 'relative';
-                btn.style.transition = 'all 0.2s ease';
-                btn.style.boxSizing = 'border-box';
-                btn.style.whiteSpace = 'pre-line';
-                btn.style.lineHeight = '1.3';
-
-                if (isBooked) {
-                    btn.innerText = `${slot}\n[OCUPADO]`;
-                    btn.style.cursor = 'not-allowed';
-                    btn.style.background = 'rgba(239, 68, 68, 0.04)';
-                    btn.style.color = 'rgba(239, 68, 68, 0.45)';
-                    btn.style.borderColor = 'rgba(239, 68, 68, 0.18)';
-                    btn.style.textDecoration = 'line-through';
-                    btn.style.fontSize = '0.75rem';
-                } else {
-                    btn.innerText = slot;
-                    btn.style.cursor = 'pointer';
-                    btn.style.background = '#000';
-                    btn.style.color = '#fff';
-                    
-                    btn.onclick = () => {
-                        Array.from(timeSlotsContainer.children).forEach(c => {
-                            if(c.style.cursor !== 'not-allowed') {
-                                c.style.background = '#000';
-                                c.style.color = '#fff';
-                                c.style.borderColor = '#333';
-                            }
-                        });
-                        btn.style.background = 'rgba(176, 133, 245, 0.1)';
-                        btn.style.color = '#b085f5';
-                        btn.style.borderColor = '#b085f5';
-                        selectedTime = slot;
-                        btnConfirm.style.display = 'block';
-                    };
+                // Re-render only if there is a change or it wasn't rendered yet
+                if (cachedSlots === undefined || JSON.stringify(cachedSlots.sort()) !== JSON.stringify(bookedTimes.sort())) {
+                    renderSlots(bookedTimes);
                 }
-                timeSlotsContainer.appendChild(btn);
-            });
+            } catch (err) {
+                console.warn("⚠️ Falha ao buscar horários no Supabase:", err.message || err);
+                // On complete network block/timeout, use empty array as fallback if not cached
+                if (cachedSlots === undefined) {
+                    renderSlots([]);
+                }
+            }
         });
 
         btnConfirm.onclick = async () => {
@@ -6939,7 +6989,7 @@ window.renderAgendamentoScreen = async function() {
                     const myNameQuery = supabaseClient.from('profiles').select('full_name').eq('id', targetClientId).single();
                     const myNameResult = await Promise.race([
                         myNameQuery,
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
                     ]);
                     const myName = myNameResult.data?.full_name || 'Um cliente';
                     const dateParts = dateVal.split('-');
