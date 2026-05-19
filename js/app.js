@@ -6773,15 +6773,27 @@ window.renderAgendamentoScreen = async function() {
             const profId = profSelect.value;
             const dateVal = dateInput.value;
 
-            // Fetch booked times (ignoring cancelled ones)
-            const { data: booked } = await supabaseClient
-                .from('appointments')
-                .select('time')
-                .eq('professional_id', profId)
-                .eq('date', dateVal)
-                .neq('status', 'cancelled');
+            let bookedTimes = [];
+            try {
+                // Fetch booked times with a 6-second timeout to prevent infinite freezing
+                const query = supabaseClient
+                    .from('appointments')
+                    .select('time')
+                    .eq('professional_id', profId)
+                    .eq('date', dateVal)
+                    .neq('status', 'cancelled');
 
-            const bookedTimes = (booked || []).map(a => a.time);
+                const result = await Promise.race([
+                    query,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 6000))
+                ]);
+
+                if (result.error) throw result.error;
+                bookedTimes = (result.data || []).map(a => a.time);
+            } catch (err) {
+                console.warn("⚠️ Falha ou Timeout ao buscar horários no Supabase (usando agenda vazia de fallback):", err.message || err);
+                bookedTimes = []; // Fallback to no bookings so they can still try to book!
+            }
 
             // Generate slots
             const allSlots = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
