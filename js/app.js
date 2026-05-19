@@ -4611,7 +4611,11 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             window.searchSortMode = 'proximity';
             if (iconEl) iconEl.innerText = '📍';
         }
-        filterAndRenderSearch();
+        if (typeof window.filterAndRenderSearch === 'function') {
+            window.filterAndRenderSearch();
+        } else {
+            filterAndRenderSearch();
+        }
     };
 
     function filterAndRenderSearch() {
@@ -4714,6 +4718,15 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 </div>
             </div>`;
         }).join('');
+    }
+
+    window.filterAndRenderSearch = filterAndRenderSearch;
+
+    const sortToggleBtn = document.getElementById('search-sort-toggle');
+    if (sortToggleBtn) {
+        // Remove inline click handler fallback if bound via JS
+        sortToggleBtn.onclick = null;
+        sortToggleBtn.addEventListener('click', window.toggleSearchSortMode);
     }
 
     const searchInput = document.getElementById('search-input');
