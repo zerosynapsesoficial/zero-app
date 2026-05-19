@@ -9,26 +9,37 @@ let supabaseClient;
 document.addEventListener('DOMContentLoaded', () => {
     // --- Initialize Supabase ---
     // Hardcoding keys and using same-origin proxy for REST while keeping raw WebSocket url for Realtime
-    const rawUrl = "https://oryguljbqcphbtiapvwk.supabase.co";
+    const proxyUrl = window.location.origin + "/api/supabase";
     const key = "sb_publishable_WaiQI8T9aLg9iJkV3nEZBg_C5M24-Z5";
+
+    // Global WebSocket Interceptor: Rewrite proxy WebSocket URL back to native Supabase URL
+    if (window.WebSocket) {
+        const NativeWebSocket = window.WebSocket;
+        window.WebSocket = class extends NativeWebSocket {
+            constructor(url, protocols) {
+                let rewrittenUrl = url;
+                if (typeof url === 'string' && url.includes('/api/supabase/realtime/v1/websocket')) {
+                    rewrittenUrl = url.replace(window.location.origin + "/api/supabase", "https://oryguljbqcphbtiapvwk.supabase.co")
+                                      .replace(/^http/, 'ws')
+                                      .replace(/^https/, 'wss');
+                    console.log("Rewriting WebSocket URL to direct Supabase:", rewrittenUrl);
+                }
+                super(rewrittenUrl, protocols);
+            }
+        };
+    }
 
     if (window.supabase) {
         try {
-            supabaseClient = window.supabase.createClient(rawUrl, key, {
+            supabaseClient = window.supabase.createClient(proxyUrl, key, {
                 auth: {
                     persistSession: true,
                     autoRefreshToken: true,
                     detectSessionInUrl: true,
                     storage: window.localStorage
-                },
-                global: {
-                    fetch: (fetchUrl, fetchOptions) => {
-                        const rewrittenUrl = fetchUrl.replace(rawUrl, window.location.origin + "/api/supabase");
-                        return fetch(rewrittenUrl, fetchOptions);
-                    }
                 }
             });
-            console.log("Supabase Client created with same-origin proxy and native WebSocket support.");
+            console.log("Supabase Client initialized natively through same-origin proxy.");
             
             // Test connection
             supabaseClient.from('profiles').select('count', { count: 'exact', head: true })
