@@ -8,12 +8,26 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Carrega o SDK do Google apenas em produção para evitar erros 403 em localhost
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (!isLocal) {
+            const script = document.createElement('script');
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⭕</text></svg>">
 </head>
 <body>
     <div id="app">
         <!-- Splash Screen -->
-        <section id="splash" class="screen active">
+        <section id="splash" class="screen">
             <div class="splash-content">
                 <h1 class="logo">Zero</h1>
                 <div class="loader"></div>
@@ -32,41 +46,30 @@
         </section>
 
         <!-- Auth: Login -->
-        <section id="login" class="screen">
+        <section id="login" class="screen active">
             <div class="auth-container">
-                <h2>Bem-vindo de volta</h2>
-                <p>Conecte-se à sua comunidade regional.</p>
-                <form id="login-form">
-                    <div class="input-group">
+                <h2 style="text-align: center;">Bem-vindo</h2>
+                <p style="text-align: center;">Conecte-se à sua comunidade regional de Salões e Barbearias</p>
+                <form id="login-form" action="#" method="post" onsubmit="return false;">
+                    <div class="input-group" style="text-align: center;">
                         <label>Email</label>
-                        <input type="email" placeholder="seu@email.com" required>
+                        <input type="email" id="login-email" name="email" placeholder="seu@email.com">
                     </div>
-                    <div class="input-group">
+                    <div class="input-group" style="text-align: center;">
                         <label>Senha</label>
-                        <input type="password" placeholder="••••••••" required>
+                        <div class="password-wrapper">
+                            <input type="password" id="login-password" name="password" placeholder="••••••••">
+                            <button type="button" id="btn-toggle-login-pw" onclick="(function(){var i=document.getElementById('login-password');var b=document.getElementById('btn-toggle-login-pw');if(i.type==='password'){i.type='text';b.textContent='🔒';}else{i.type='password';b.textContent='👁️';}})()" style="position:absolute;right:12px;background:transparent;border:none;cursor:pointer;font-size:1.2rem;padding:4px;z-index:10;filter:grayscale(1) opacity(0.5);">👁️</button>
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Entrar</button>
+                    <button type="button" id="btn-login-submit" class="btn btn-primary" style="max-width: 180px; margin: 4rem auto 0.5rem;">Entrar</button>
+                    <div id="login-error" style="display:none; margin-top: 0.75rem; padding: 0.75rem 1rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.4); border-radius: 12px; color: #f87171; font-size: 0.85rem; text-align: center;"></div>
                 </form>
                 <div class="auth-divider"><span>ou</span></div>
-                <!-- Official Google Sign-In Button Container -->
-                <div id="google-login-container" style="display: flex; justify-content: center; margin: 1rem 0;">
-                    <div id="g_id_onload"
-                         data-client_id="808404701219-bvmj9ggtklqcj2ph5294aqgm14910vmb.apps.googleusercontent.com"
-                         data-context="signin"
-                         data-ux_mode="popup"
-                         data-callback="handleCredentialResponse"
-                         data-auto_prompt="false">
-                    </div>
-                    <div class="g_id_signin"
-                         data-type="standard"
-                         data-shape="rectangular"
-                         data-theme="outline"
-                         data-text="signin_with"
-                         data-size="large"
-                         data-logo_alignment="left">
-                    </div>
+                <!-- Google Sign-In Container (Dynamic & Resilient) -->
+                <div id="google-login-container" style="display: flex; justify-content: center; margin: 1rem 0; width: 100%;">
                 </div>
-                <p class="auth-footer">Não tem conta? <a href="#register">Cadastre-se</a></p>
+                <p class="auth-footer">Não tem conta? <a href="#user-type-selection">Cadastre-se</a></p>
             </div>
         </section>
 
@@ -87,7 +90,10 @@
                     </div>
                     <div class="input-group">
                         <label>Senha</label>
-                        <input type="password" placeholder="••••••••" required>
+                        <div class="password-wrapper">
+                            <input type="password" placeholder="••••••••" required>
+                            <span class="toggle-password">👁️</span>
+                        </div>
                     </div>
                     <button type="submit" class="btn btn-primary">Cadastrar</button>
                 </form>
@@ -127,7 +133,7 @@
                     </div>
                     <div class="input-group">
                         <label>Nome Completo</label>
-                        <input type="text" id="client-name" placeholder="Seu nome" required>
+                        <input type="text" id="client-name" placeholder="Ex: Anderson Silva" required>
                     </div>
                     <div class="input-group">
                         <label>Email</label>
@@ -135,21 +141,38 @@
                     </div>
                     <div class="input-group">
                         <label>Telefone / WhatsApp</label>
-                        <input type="tel" placeholder="(11) 99999-9999" required>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="client-ddd" style="width: 100px; text-align: center; padding: 1rem; border-radius: 12px; background: #1a1a1a; color: #fff; border: 1px solid var(--border);" required>
+                                <option value="">DDD</option>
+                                <option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option>
+                                <option value="21">21</option><option value="22">22</option><option value="24">24</option><option value="27">27</option><option value="28">28</option>
+                                <option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="37">37</option><option value="38">38</option>
+                                <option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option>
+                                <option value="51">51</option><option value="53">53</option><option value="54">54</option><option value="55">55</option>
+                                <option value="61">61</option><option value="62">62</option><option value="63">63</option><option value="64">64</option><option value="65">65</option><option value="66">66</option><option value="67">67</option><option value="68">68</option><option value="69">69</option>
+                                <option value="71">71</option><option value="73">73</option><option value="74">74</option><option value="75">75</option><option value="77">77</option><option value="79">79</option>
+                                <option value="81">81</option><option value="82">82</option><option value="83">83</option><option value="84">84</option><option value="85">85</option><option value="86">86</option><option value="87">87</option><option value="88">88</option><option value="89">89</option>
+                                <option value="91">91</option><option value="92">92</option><option value="93">93</option><option value="94">94</option><option value="95">95</option><option value="96">96</option><option value="97">97</option><option value="98">98</option><option value="99">99</option>
+                            </select>
+                            <input type="tel" id="client-phone" placeholder="99999-9999" style="flex: 1;" required>
+                        </div>
                     </div>
                     <div class="input-row">
                         <div class="input-group">
                             <label>Cidade / Região</label>
-                            <input type="text" placeholder="Ex: São Paulo, SP" required>
+                            <input type="text" id="client-city" placeholder="Cidade - Estado">
                         </div>
                     </div>
                     <div class="input-group">
-                        <label>Endereço (Opcional)</label>
-                        <input type="text" placeholder="Rua, Número, Bairro">
+                        <label>Endereço</label>
+                        <div class="input-with-action">
+                            <input type="text" id="client-address" placeholder="Rua, Número, Bairro">
+                            <button type="button" class="action-btn-input" onclick="window.openMapPicker('client-address', 'client-city')">📍</button>
+                        </div>
                     </div>
                     <div class="input-group">
                         <label>Data de Nascimento</label>
-                        <input type="date" required>
+                        <input type="date">
                     </div>
                     <div class="input-group">
                         <label>Preferências de Serviços</label>
@@ -161,19 +184,24 @@
                         </div>
                     </div>
                     <div class="input-group">
-                        <label>Senha</label>
-                        <input type="password" placeholder="••••••••" required>
+                        <label><span style="filter: grayscale(1) opacity(0.5); margin-right: 5px;">🔒</span> Senha</label>
+                        <div class="password-wrapper">
+                            <input type="password" placeholder="••••••••" required>
+                            <span class="toggle-password">👁️</span>
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Concluir Cadastro</button>
+                    <button type="submit" class="btn btn-primary" id="btn-final-client">Concluir Cadastro</button>
                 </form>
             </div>
         </section>
 
         <!-- Register: Professional -->
         <section id="register-professional" class="screen scrollable">
-            <div class="auth-container">
-                <button class="back-btn" onclick="location.hash='#user-type-selection'">←</button>
-                <h2>Perfil Profissional</h2>
+            <header style="display: flex; align-items: center; justify-content: center; position: relative; padding: 2.5rem 2.5rem 1rem;">
+                <button class="back-btn" onclick="location.hash='#user-type-selection'" style="position: absolute; left: 2.5rem;">←</button>
+                <h2 style="margin: 0; font-size: 1.8rem; font-weight: 800; letter-spacing: -1px;">Perfil Profissional</h2>
+            </header>
+            <div class="auth-container" style="margin-top: 0; padding-top: 1rem;">
                 <form id="form-professional">
                     <div class="profile-uploads">
                         <div class="profile-pic-upload" onclick="document.getElementById('prof-photo-input').click()">
@@ -195,7 +223,7 @@
                     </div>
                     <div class="input-group">
                         <label>Nome Profissional / Empresa</label>
-                        <input type="text" placeholder="Como você é conhecido?" required>
+                        <input type="text" id="prof-company-name" placeholder="Como você é conhecido?" required>
                     </div>
                     <div class="input-group">
                         <label>Email</label>
@@ -203,35 +231,220 @@
                     </div>
                     <div class="input-group">
                         <label>Telefone / WhatsApp</label>
-                        <input type="tel" placeholder="(11) 99999-9999" required>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="prof-ddd" style="width: 100px; text-align: center; padding: 1rem; border-radius: 12px; background: #1a1a1a; color: #fff; border: 1px solid var(--border);" required>
+                                <option value="">DDD</option>
+                                <option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option>
+                                <option value="21">21</option><option value="22">22</option><option value="24">24</option><option value="27">27</option><option value="28">28</option>
+                                <option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="37">37</option><option value="38">38</option>
+                                <option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option>
+                                <option value="51">51</option><option value="53">53</option><option value="54">54</option><option value="55">55</option>
+                                <option value="61">61</option><option value="62">62</option><option value="63">63</option><option value="64">64</option><option value="65">65</option><option value="66">66</option><option value="67">67</option><option value="68">68</option><option value="69">69</option>
+                                <option value="71">71</option><option value="73">73</option><option value="74">74</option><option value="75">75</option><option value="77">77</option><option value="79">79</option>
+                                <option value="81">81</option><option value="82">82</option><option value="83">83</option><option value="84">84</option><option value="85">85</option><option value="86">86</option><option value="87">87</option><option value="88">88</option><option value="89">89</option>
+                                <option value="91">91</option><option value="92">92</option><option value="93">93</option><option value="94">94</option><option value="95">95</option><option value="96">96</option><option value="97">97</option><option value="98">98</option><option value="99">99</option>
+                            </select>
+                            <input type="tel" id="prof-phone" placeholder="99999-9999" style="flex: 1;" required>
+                        </div>
                     </div>
 
                     <div class="form-section-title">Atuação</div>
                     <div class="input-group">
                         <label>Categoria Profissional</label>
-                        <select required>
+                        <select id="prof-category">
                             <option value="">Selecione...</option>
-                            <option value="beleza">Beleza & Bem Estar</option>
-                            <option value="reformas">Reformas & Reparos</option>
-                            <option value="saude">Saúde</option>
-                            <option value="tecnologia">Tecnologia & Digital</option>
+                            <option value="Salão">Salão</option>
+                            <option value="Barbearia">Barbearia</option>
+                            <option value="Estúdio de Beleza">Estúdio de Beleza</option>
+                            <option value="Espaço">Espaço</option>
                         </select>
                     </div>
                     <div class="input-group">
-                        <label>Especialidades</label>
-                        <input type="text" placeholder="Ex: Manicure, Pintura, Psicologia">
+                        <label>Especialidades (Selecione as que você atende)</label>
+                        <div id="prof-specialties-chips" class="chips-container" style="min-height: 44px; border: 1px solid #333; border-radius: 12px; padding: 8px; background: #0a0a0a; margin-bottom: 8px; justify-content: flex-start; gap: 6px;">
+                            <span style="color: #555; font-size: 0.8rem; padding: 5px;">Selecione abaixo...</span>
+                        </div>
+                        <div class="input-with-action">
+                            <input type="text" id="specialties-input" list="specialties-data" placeholder="Pesquisar especialidade...">
+                            <datalist id="specialties-data">
+                                <option value="Corte masculino"></option>
+                                <option value="Corte feminino"></option>
+                                <option value="Corte infantil"></option>
+                                <option value="Corte juvenil"></option>
+                                <option value="Corte social"></option>
+                                <option value="Corte degradê (fade)"></option>
+                                <option value="Corte freestyle"></option>
+                                <option value="Corte com navalha"></option>
+                                <option value="Hair tattoo"></option>
+                                <option value="Tranças"></option>
+                                <option value="Dreads"></option>
+                                <option value="Alongamento capilar"></option>
+                                <option value="Mega hair"></option>
+                                <option value="Mega hair invisível"></option>
+                                <option value="Lace"></option>
+                                <option value="Prótese capilar"></option>
+                                <option value="Escova"></option>
+                                <option value="Escova progressiva"></option>
+                                <option value="Escova definitiva"></option>
+                                <option value="Botox capilar"></option>
+                                <option value="Selagem capilar"></option>
+                                <option value="Cauterização"></option>
+                                <option value="Hidratação capilar"></option>
+                                <option value="Nutrição capilar"></option>
+                                <option value="Reconstrução capilar"></option>
+                                <option value="Cronograma capilar"></option>
+                                <option value="Detox capilar"></option>
+                                <option value="Terapia capilar"></option>
+                                <option value="Tricologia"></option>
+                                <option value="Relaxamento capilar"></option>
+                                <option value="Alisamento capilar"></option>
+                                <option value="Permanente"></option>
+                                <option value="Texturização"></option>
+                                <option value="Finalização de cachos"></option>
+                                <option value="Coloração"></option>
+                                <option value="Tintura"></option>
+                                <option value="Tonalização"></option>
+                                <option value="Luzes"></option>
+                                <option value="Mechas"></option>
+                                <option value="Balayage"></option>
+                                <option value="Ombré hair"></option>
+                                <option value="Morena iluminada"></option>
+                                <option value="Descoloração"></option>
+                                <option value="Pigmentação capilar"></option>
+                                <option value="Camuflagem de fios brancos"></option>
+                                <option value="Penteados"></option>
+                                <option value="Penteado para noiva"></option>
+                                <option value="Penteado infantil"></option>
+                                <option value="Barba tradicional"></option>
+                                <option value="Barba premium"></option>
+                                <option value="Barboterapia"></option>
+                                <option value="Design de barba"></option>
+                                <option value="Hidratação de barba"></option>
+                                <option value="Tintura de barba"></option>
+                                <option value="Relaxamento de barba"></option>
+                                <option value="Alisamento de barba"></option>
+                                <option value="Sobrancelha masculina"></option>
+                                <option value="Design de sobrancelha"></option>
+                                <option value="Brow designer"></option>
+                                <option value="Brow lamination"></option>
+                                <option value="Henna"></option>
+                                <option value="Micropigmentação"></option>
+                                <option value="Microblading"></option>
+                                <option value="Micropigmentação labial"></option>
+                                <option value="Micropigmentação capilar"></option>
+                                <option value="Lash lifting"></option>
+                                <option value="Lash designer"></option>
+                                <option value="Extensão de cílios"></option>
+                                <option value="Volume russo"></option>
+                                <option value="Volume brasileiro"></option>
+                                <option value="Fox eyes"></option>
+                                <option value="Tintura de cílios"></option>
+                                <option value="Maquiagem social"></option>
+                                <option value="Maquiagem artística"></option>
+                                <option value="Maquiagem profissional"></option>
+                                <option value="Maquiagem para noiva"></option>
+                                <option value="Maquiagem HD"></option>
+                                <option value="Airbrush"></option>
+                                <option value="Consultoria de maquiagem"></option>
+                                <option value="Visagismo"></option>
+                                <option value="Colorimetria pessoal"></option>
+                                <option value="Manicure"></option>
+                                <option value="Pedicure"></option>
+                                <option value="Spa dos pés"></option>
+                                <option value="Podologia"></option>
+                                <option value="Nail designer"></option>
+                                <option value="Unha em gel"></option>
+                                <option value="Fibra de vidro"></option>
+                                <option value="Acrigel"></option>
+                                <option value="Banho de gel"></option>
+                                <option value="Blindagem de unhas"></option>
+                                <option value="Alongamento de unhas"></option>
+                                <option value="Nail art"></option>
+                                <option value="Cutilagem"></option>
+                                <option value="Esmaltação em gel"></option>
+                                <option value="Limpeza de pele"></option>
+                                <option value="Limpeza de pele profunda"></option>
+                                <option value="Peeling químico"></option>
+                                <option value="Peeling de diamante"></option>
+                                <option value="Microagulhamento"></option>
+                                <option value="Rejuvenescimento facial"></option>
+                                <option value="Hidratação facial"></option>
+                                <option value="Clareamento facial"></option>
+                                <option value="Tratamento para acne"></option>
+                                <option value="Skinbooster"></option>
+                                <option value="LED terapia"></option>
+                                <option value="Radiofrequência"></option>
+                                <option value="Ultrassom estético"></option>
+                                <option value="Estética facial"></option>
+                                <option value="Estética corporal"></option>
+                                <option value="Criolipólise"></option>
+                                <option value="Lipocavitação"></option>
+                                <option value="Ultracavitação"></option>
+                                <option value="Endermoterapia"></option>
+                                <option value="Corrente russa"></option>
+                                <option value="Drenagem linfática"></option>
+                                <option value="Massagem modeladora"></option>
+                                <option value="Massagem relaxante"></option>
+                                <option value="Massoterapia"></option>
+                                <option value="Aromaterapia"></option>
+                                <option value="Reflexologia"></option>
+                                <option value="Ventosaterapia"></option>
+                                <option value="Spa day"></option>
+                                <option value="Tratamento para celulite"></option>
+                                <option value="Tratamento para estrias"></option>
+                                <option value="Tratamento para flacidez"></option>
+                                <option value="Redução de medidas"></option>
+                                <option value="Depilação com cera"></option>
+                                <option value="Depilação egípcia"></option>
+                                <option value="Depilação facial"></option>
+                                <option value="Depilação corporal"></option>
+                                <option value="Depilação a laser"></option>
+                                <option value="Luz pulsada"></option>
+                                <option value="Bronzeamento artificial"></option>
+                                <option value="Bronzeamento natural"></option>
+                                <option value="Harmonização facial"></option>
+                                <option value="Camuflagem de cicatrizes"></option>
+                                <option value="Camuflagem de estrias"></option>
+                                <option value="Tatuagem estética"></option>
+                                <option value="Beauty artist"></option>
+                                <option value="Barber spa"></option>
+                                <option value="Dia do noivo"></option>
+                                <option value="Dia da noiva"></option>
+                                <option value="Consultoria de imagem"></option>
+                                <option value="Personal beauty"></option>
+                                <option value="Estética avançada"></option>
+                                <option value="Spa capilar"></option>
+                                <option value="Terapia antiqueda"></option>
+                                <option value="Controle de oleosidade capilar"></option>
+                                <option value="Massagem capilar"></option>
+                                <option value="Camuflagem de falhas capilares"></option>
+                                <option value="Consultoria capilar"></option>
+                                <option value="Tratamento antiqueda"></option>
+                                <option value="Relaxamento masculino"></option>
+                                <option value="Escova masculina"></option>
+                                <option value="Unha masculina"></option>
+                                <option value="Manicure masculina"></option>
+                                <option value="Pedicure masculina"></option>
+                                <option value="Limpeza de pele masculina"></option>
+                                <option value="Estética masculina"></option>
+                            </datalist>
+                            <button type="button" class="action-btn-input" id="btn-add-specialty" style="background: #ffffff; color: #000000; font-size: 1.5rem; font-weight: bold;">+</button>
+                        </div>
                     </div>
                     <div class="input-group">
                         <label>Descrição Profissional (Bio)</label>
-                        <textarea placeholder="Conte um pouco sobre seu trabalho..." rows="3" required></textarea>
+                        <textarea placeholder="Conte um pouco sobre seu trabalho..." rows="3"></textarea>
                     </div>
                     <div class="input-group">
                         <label>Anos de Experiência</label>
-                        <input type="number" placeholder="Ex: 5" required>
+                        <input type="number" placeholder="Ex: 5" min="0">
                     </div>
                     <div class="input-group">
                         <label>Cidade / Região de Atendimento</label>
-                        <input type="text" placeholder="Ex: São Paulo e Grande ABC" required>
+                        <div class="input-with-action">
+                            <input type="text" id="prof-location" placeholder="Ex: São Paulo e Grande ABC">
+                            <button type="button" class="action-btn-input" onclick="window.openMapPicker('prof-location')">📍</button>
+                        </div>
                     </div>
 
                     <div class="form-section-title">Portfólio & Redes</div>
@@ -246,227 +459,776 @@
 
                     <div class="form-section-title">Atendimento & Preços</div>
                     <div class="input-group">
-                        <label>Horário de Atendimento</label>
-                        <input type="text" placeholder="Ex: Seg a Sex, 09h às 18h" required>
+                        <label>Expediente (Início e Fim)</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div class="input-subgroup">
+                                <small style="color: #888; display: block; margin-bottom: 5px;">Início do Trabalho</small>
+                                <select id="prof-work-start">
+                                    <option value="00:00">00:00</option><option value="00:30">00:30</option><option value="01:00">01:00</option><option value="01:30">01:30</option><option value="02:00">02:00</option><option value="02:30">02:30</option><option value="03:00">03:00</option><option value="03:30">03:30</option><option value="04:00">04:00</option><option value="04:30">04:30</option><option value="05:00">05:00</option><option value="05:30">05:30</option><option value="06:00">06:00</option><option value="06:30">06:30</option><option value="07:00">07:00</option><option value="07:30">07:30</option><option value="08:00" selected>08:00</option><option value="08:30">08:30</option><option value="09:00">09:00</option><option value="09:30">09:30</option><option value="10:00">10:00</option><option value="10:30">10:30</option><option value="11:00">11:00</option><option value="11:30">11:30</option><option value="12:00">12:00</option><option value="12:30">12:30</option><option value="13:00">13:00</option><option value="13:30">13:30</option><option value="14:00">14:00</option><option value="14:30">14:30</option><option value="15:00">15:00</option><option value="15:30">15:30</option><option value="16:00">16:00</option><option value="16:30">16:30</option><option value="17:00">17:00</option><option value="17:30">17:30</option><option value="18:00">18:00</option><option value="18:30">18:30</option><option value="19:00">19:00</option><option value="19:30">19:30</option><option value="20:00">20:00</option><option value="20:30">20:30</option><option value="21:00">21:00</option><option value="21:30">21:30</option><option value="22:00">22:00</option><option value="22:30">22:30</option><option value="23:00">23:00</option><option value="23:30">23:30</option>
+                                </select>
+                            </div>
+                            <div class="input-subgroup">
+                                <small style="color: #888; display: block; margin-bottom: 5px;">Fim do Trabalho</small>
+                                <select id="prof-work-end">
+                                    <option value="00:00">00:00</option><option value="00:30">00:30</option><option value="01:00">01:00</option><option value="01:30">01:30</option><option value="02:00">02:00</option><option value="02:30">02:30</option><option value="03:00">03:00</option><option value="03:30">03:30</option><option value="04:00">04:00</option><option value="04:30">04:30</option><option value="05:00">05:00</option><option value="05:30">05:30</option><option value="06:00">06:00</option><option value="06:30">06:30</option><option value="07:00">07:00</option><option value="07:30">07:30</option><option value="08:00">08:00</option><option value="08:30">08:30</option><option value="09:00">09:00</option><option value="09:30">09:30</option><option value="10:00">10:00</option><option value="10:30">10:30</option><option value="11:00">11:00</option><option value="11:30">11:30</option><option value="12:00">12:00</option><option value="12:30">12:30</option><option value="13:00">13:00</option><option value="13:30">13:30</option><option value="14:00">14:00</option><option value="14:30">14:30</option><option value="15:00">15:00</option><option value="15:30">15:30</option><option value="16:00">16:00</option><option value="16:30">16:30</option><option value="17:00">17:00</option><option value="17:30">17:30</option><option value="18:00" selected>18:00</option><option value="18:30">18:30</option><option value="19:00">19:00</option><option value="19:30">19:30</option><option value="20:00">20:00</option><option value="20:30">20:30</option><option value="21:00">21:00</option><option value="21:30">21:30</option><option value="22:00">22:00</option><option value="22:30">22:30</option><option value="23:00">23:00</option><option value="23:30">23:30</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Intervalo / Pausa (Opcional)</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div class="input-subgroup">
+                                <small style="color: #888; display: block; margin-bottom: 5px;">Início da Pausa</small>
+                                <select id="prof-break-start">
+                                    <option value="">Sem pausa</option>
+                                    <option value="00:00">00:00</option><option value="00:30">00:30</option><option value="01:00">01:00</option><option value="01:30">01:30</option><option value="02:00">02:00</option><option value="02:30">02:30</option><option value="03:00">03:00</option><option value="03:30">03:30</option><option value="04:00">04:00</option><option value="04:30">04:30</option><option value="05:00">05:00</option><option value="05:30">05:30</option><option value="06:00">06:00</option><option value="06:30">06:30</option><option value="07:00">07:00</option><option value="07:30">07:30</option><option value="08:00">08:00</option><option value="08:30">08:30</option><option value="09:00">09:00</option><option value="09:30">09:30</option><option value="10:00">10:00</option><option value="10:30">10:30</option><option value="11:00">11:00</option><option value="11:30">11:30</option><option value="12:00">12:00</option><option value="12:30">12:30</option><option value="13:00">13:00</option><option value="13:30">13:30</option><option value="14:00">14:00</option><option value="14:30">14:30</option><option value="15:00">15:00</option><option value="15:30">15:30</option><option value="16:00">16:00</option><option value="16:30">16:30</option><option value="17:00">17:00</option><option value="17:30">17:30</option><option value="18:00">18:00</option><option value="18:30">18:30</option><option value="19:00">19:00</option><option value="19:30">19:30</option><option value="20:00">20:00</option><option value="20:30">20:30</option><option value="21:00">21:00</option><option value="21:30">21:30</option><option value="22:00">22:00</option><option value="22:30">22:30</option><option value="23:00">23:00</option><option value="23:30">23:30</option>
+                                </select>
+                            </div>
+                            <div class="input-subgroup">
+                                <small style="color: #888; display: block; margin-bottom: 5px;">Fim da Pausa</small>
+                                <select id="prof-break-end">
+                                    <option value="">Sem pausa</option>
+                                    <option value="00:00">00:00</option><option value="00:30">00:30</option><option value="01:00">01:00</option><option value="01:30">01:30</option><option value="02:00">02:00</option><option value="02:30">02:30</option><option value="03:00">03:00</option><option value="03:30">03:30</option><option value="04:00">04:00</option><option value="04:30">04:30</option><option value="05:00">05:00</option><option value="05:30">05:30</option><option value="06:00">06:00</option><option value="06:30">06:30</option><option value="07:00">07:00</option><option value="07:30">07:30</option><option value="08:00">08:00</option><option value="08:30">08:30</option><option value="09:00">09:00</option><option value="09:30">09:30</option><option value="10:00">10:00</option><option value="10:30">10:30</option><option value="11:00">11:00</option><option value="11:30">11:30</option><option value="12:00">12:00</option><option value="12:30">12:30</option><option value="13:00">13:00</option><option value="13:30">13:30</option><option value="14:00">14:00</option><option value="14:30">14:30</option><option value="15:00">15:00</option><option value="15:30">15:30</option><option value="16:00">16:00</option><option value="16:30">16:30</option><option value="17:00">17:00</option><option value="17:30">17:30</option><option value="18:00">18:00</option><option value="18:30">18:30</option><option value="19:00">19:00</option><option value="19:30">19:30</option><option value="20:00">20:00</option><option value="20:30">20:30</option><option value="21:00">21:00</option><option value="21:30">21:30</option><option value="22:00">22:00</option><option value="22:30">22:30</option><option value="23:00">23:00</option><option value="23:30">23:30</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Serviço Principal</label>
+                        <input type="text" placeholder="Ex: Corte de Cabelo">
                     </div>
                     <div class="input-group">
-                        <label>Faixa de Preço</label>
-                        <input type="text" placeholder="Ex: A partir de R$ 80,00" required>
+                        <label>Preço do Serviço</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div class="input-subgroup">
+                                <small style="color: #888; display: block; margin-bottom: 5px;">Masculino</small>
+                                <div style="display: flex; align-items: center; background: #1a1a1a; border-radius: 12px; border: 1px solid #333;">
+                                    <span style="padding: 0 10px; color: #888;">R$</span>
+                                    <input type="number" step="0.01" placeholder="0,00" style="border: none; background: transparent; padding-left: 0; width: 100%;">
+                                </div>
+                            </div>
+                            <div class="input-subgroup">
+                                <small style="color: #888; display: block; margin-bottom: 5px;">Feminino</small>
+                                <div style="display: flex; align-items: center; background: #1a1a1a; border-radius: 12px; border: 1px solid #333;">
+                                    <span style="padding: 0 10px; color: #888;">R$</span>
+                                    <input type="number" step="0.01" placeholder="0,00" style="border: none; background: transparent; padding-left: 0; width: 100%;">
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-section-title">Financeiro & Verificação</div>
                     <div class="input-group">
                         <label>Chave Pix / Dados Bancários</label>
-                        <input type="text" placeholder="Sua chave para pagamentos" required>
+                        <input type="text" placeholder="Sua chave para pagamentos">
                     </div>
                     <div class="input-group">
                         <label>Documento de Verificação (RG/CPF)</label>
-                        <input type="file" required>
-                        <small>Para segurança da comunidade.</small>
+                        <div style="position: relative; width: 100%;">
+                            <button type="button" class="btn" style="background: #1a1a1a; border: 1px solid #333; color: #888; font-weight: 400; text-align: left; padding: 0.8rem 1rem; border-radius: 12px; display: flex; align-items: center; gap: 10px; width: 100%;">
+                                <span>📁 Selecionar Arquivo...</span>
+                            </button>
+                            <input type="file" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;" onchange="this.previousElementSibling.querySelector('span').innerText = this.files[0] ? this.files[0].name : '📁 Selecionar Arquivo...'; this.previousElementSibling.style.color = '#fff';">
+                        </div>
+                        <small style="display: block; text-align: center; color: #888; margin-top: 8px;">Para segurança da comunidade.</small>
                     </div>
                     
                     <div class="input-group">
-                        <label>Senha</label>
-                        <input type="password" placeholder="••••••••" required>
+                        <label><span style="filter: grayscale(1) opacity(0.5); margin-right: 5px;">🔒</span> Senha</label>
+                        <div class="password-wrapper">
+                            <input type="password" placeholder="••••••••" required>
+                            <span class="toggle-password">👁️</span>
+                        </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Finalizar Perfil Profissional</button>
+                    <button type="submit" class="btn btn-primary" id="btn-final-prof">Finalizar Perfil Profissional</button>
                 </form>
             </div>
         </section>
 
         <main id="main-content" class="screen">
-            <!-- Nav Bar (Bottom) -->
-            <nav class="bottom-nav">
-                <a href="#home" class="nav-item active" data-screen="home">
-                    <span class="icon">🏠</span>
-                    <span class="label">Início</span>
-                </a>
-                <a href="#busca" class="nav-item" data-screen="busca">
-                    <span class="icon">🔍</span>
-                    <span class="label">Busca</span>
-                </a>
-                <a href="#chat" class="nav-item" data-screen="chat">
-                    <span class="icon">💬</span>
-                    <span class="label">Chat</span>
-                </a>
-                <a href="#perfil" class="nav-item" data-screen="perfil">
-                    <span class="icon">👤</span>
-                    <span class="label">Perfil</span>
+            <!-- Top Menu Tab Bar (Fixed) -->
+            <nav class="top-tab-bar">
+                <a class="top-tab" href="#busca"><span style="filter: grayscale(1) brightness(1.2);">🔍</span></a>
+                <a class="top-tab" href="#gastos"><span style="filter: grayscale(1) brightness(1.2); font-size: 1.44rem; display: inline-block; transform: translateY(-3px);">💼</span></a>
+                <a class="top-tab" href="#home" id="nav-home-btn"><span style="filter: grayscale(1) brightness(1.2);">🏠</span></a>
+                <a class="top-tab" href="#agendamento"><span style="filter: grayscale(1) brightness(1.2);">📅</span></a>
+                <a class="top-tab" href="#perfil" style="position: relative;">
+                    <span id="nav-profile-icon">👤</span>
+                    <div id="profile-notif-badge" style="display: none; position: absolute; top: 0px; right: 0px; width: 10px; height: 10px; background: #ff4d4d; border-radius: 50%; border: 2px solid #000;"></div>
                 </a>
             </nav>
 
-            <!-- Home Screen -->
+            <!-- Home Screen (Dynamic Dashboard) -->
             <div id="home" class="sub-screen active">
-                <header class="home-header">
-                    <div>
-                        <span class="greeting">Olá, Lucas</span>
-                        <h2 class="location-current">📍 São Paulo, SP</h2>
+                <div class="home-feed" style="padding: 1.5rem 1rem 5rem 1rem; text-align: left;">
+                    
+                    <!-- Intro -->
+                    <div class="home-intro" style="margin-bottom: 2.5rem; text-align: center;">
+                        <h2 style="font-size: 1.8rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(90deg, #fff, #888); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Rede de Cabeleireiros e Barbearia</h2>
+                        <p style="color: #aaa; font-size: 0.95rem; line-height: 1.4;">A maior comunidade regional conectando os melhores profissionais aos clientes mais exigentes. Descubra, agende e transforme seu estilo.</p>
                     </div>
-                    <button class="btn-icon">🔔</button>
-                </header>
-                
-                <div class="search-bar-trigger" onclick="location.hash='#busca'">
-                    <span>🔍 Buscar profissionais...</span>
-                </div>
 
-                <div class="categories-grid" id="home-categories">
-                    <!-- Injected by JS -->
-                </div>
+                    <!-- Ads (Publis) -->
+                    <div class="home-ads" style="margin-bottom: 2.5rem;">
+                        <div class="ad-card" style="background: #111; border-radius: 20px; overflow: hidden; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                            <!-- Imagem de barbearia Unsplash -->
+                            <img src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Publicidade Barbearia" style="width: 100%; height: 220px; object-fit: cover; display: block;">
+                            <div style="padding: 1.25rem;">
+                                <h4 style="margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #fff;">Equipamentos Profissionais Premium</h4>
+                                <p style="color: #888; font-size: 0.85rem; margin: 0; line-height: 1.4;">As melhores máquinas, tesouras e produtos para o seu espaço. Aproveite os descontos da semana e eleve o nível do seu atendimento!</p>
+                            </div>
+                        </div>
+                    </div>
 
-                <section class="featured-section">
-                    <div class="section-header">
-                        <h3>Destaques</h3>
-                        <a href="#busca">Ver tudo</a>
+                    <!-- Client View (Oculto por padrão, ativado via JS) -->
+                    <div id="client-dashboard" class="role-dashboard client-only" style="display: none; margin-bottom: 2.5rem;">
+                        <div class="dashboard-grid">
+                            <div class="dash-card" onclick="location.hash='#busca'">
+                                <div class="card-icon">🔍</div>
+                                <h4>Encontrar</h4>
+                                <p>Salões e Barbearias</p>
+                            </div>
+                            <div class="dash-card" onclick="location.hash='#chat'">
+                                <div class="card-icon">🗨️</div>
+                                <h4>Mensagens</h4>
+                                <p>Minhas conversas</p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="featured-scroll" id="featured-professionals">
-                        <!-- Injected by JS -->
+
+                    <!-- Professional View (Oculto por padrão, ativado via JS) -->
+                    <div id="professional-dashboard" class="role-dashboard prof-only" style="display: none; margin-bottom: 2.5rem;">
+                        <div class="dashboard-grid">
+                            <div class="dash-card" onclick="location.hash='#chat'">
+                                <div class="card-icon">🗨️</div>
+                                <h4>Mensagens</h4>
+                                <p>Conversas com clientes</p>
+                            </div>
+                            <div class="dash-card" onclick="location.hash='#catalogo'">
+                                <div class="card-icon">📋</div>
+                                <h4>Meu Catálogo</h4>
+                                <p>Serviços e preços</p>
+                            </div>
+                            <div class="dash-card" onclick="location.hash='#mapa'">
+                                <div class="card-icon">🌍</div>
+                                <h4>Mapa de Clientes</h4>
+                                <p>Onde estão os clientes</p>
+                            </div>
+                        </div>
                     </div>
-                </section>
+
+                    <!-- Admin Messages -->
+                    <div class="home-announcements" style="background: #0a0a0a; border: 1px solid #222; border-radius: 16px; padding: 1.25rem;">
+                        <h4 style="margin: 0 0 1.25rem 0; display: flex; align-items: center; gap: 8px; color: #fff; font-size: 1rem;">
+                            <span style="color: var(--primary-accent); font-size: 1.2rem;">📌</span> Avisos da Administração
+                        </h4>
+                        <div class="announcement-item" style="border-left: 3px solid var(--primary-accent); padding-left: 12px; margin-bottom: 1.25rem;">
+                            <p style="margin: 0 0 0.4rem 0; font-size: 0.9rem; color: #eee;">Bem-vindos à nova versão do aplicativo!</p>
+                            <p style="margin: 0 0 0.4rem 0; font-size: 0.8rem; color: #888;">Estamos trabalhando duro para trazer as melhores ferramentas para vocês.</p>
+                            <small style="color: #555; font-weight: bold;">Por: Admin • Hoje</small>
+                        </div>
+                        <div class="announcement-item" style="border-left: 3px solid #444; padding-left: 12px;">
+                            <p style="margin: 0 0 0.4rem 0; font-size: 0.9rem; color: #aaa;">Novas especialidades adicionadas.</p>
+                            <p style="margin: 0 0 0.4rem 0; font-size: 0.8rem; color: #666;">Verifique seu perfil e atualize seus serviços oferecidos.</p>
+                            <small style="color: #444; font-weight: bold;">Por: Equipe Zero • Ontem</small>
+                        </div>
+                    </div>
+
+                </div>
             </div>
 
-            <!-- Busca Screen -->
+            <!-- Outras Sub-screens (Busca, Chat, Perfil) omitidas por brevidade mas mantidas no arquivo real -->
             <div id="busca" class="sub-screen">
                 <header class="search-header">
                     <div class="search-input-wrapper">
+                        <button id="btn-search-trigger" style="background: transparent; border: none; color: #666; font-size: 1.1rem; margin-left: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center;">🔍</button>
                         <input type="text" id="search-input" placeholder="O que você procura?">
-                        <button class="filter-btn">⚙️</button>
+                        <button id="search-sort-toggle" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #b085f5; border-radius: 8px; padding: 0 8px; font-size: 0.7rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s ease; white-space: nowrap; height: 32px; flex-shrink: 0;" onclick="toggleSearchSortMode()">
+                            <span id="search-sort-icon">📍</span>
+                            <span id="search-sort-text" style="text-transform: uppercase;">Proximidade</span>
+                        </button>
+                        <select id="category-filter">
+                            <option value="Todos">Todos</option>
+                            <option value="Salão">Salão</option>
+                            <option value="Barbearia">Barbearia</option>
+                            <option value="Estúdio de Beleza">Estúdio de Beleza</option>
+                            <option value="Espaço">Espaço</option>
+                        </select>
                     </div>
                 </header>
-                <div class="search-results" id="search-results">
-                    <!-- Injected by JS -->
+                
+                <div class="search-results" id="search-results" style="padding: 1rem;"></div>
+
+                <div id="recent-professionals-container" style="margin-top: 15vh; padding: 0 1rem 1rem 1rem; display:none;">
+                    <h4 style="margin: 0 0 0.6rem 0; color: #fff; font-size: 0.95rem; font-weight: 800; text-align: center;">Novo por aqui</h4>
+                    <div id="recent-professionals-list" class="featured-scroll" style="padding-bottom: 0.5rem; display: flex; justify-content: center; gap: 10px; overflow-x: auto;">
+                        <!-- preenchido via JS -->
+                    </div>
+                    
+                    <!-- Dynamic Services Guide -->
+                    <div id="dynamic-services-guide" style="margin-top: 2.5vh; background: rgba(168, 85, 247, 0.04); border: 1px solid rgba(168, 85, 247, 0.15); padding: 0.5rem 1rem; border-radius: 18px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.4); cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 68px; box-sizing: border-box; width: 100%; max-width: 400px; margin-left: auto; margin-right: auto;">
+                        <span style="font-size: 0.7rem; color: #777; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800;">Serviços Principais</span>
+                        <div id="dynamic-service-value" style="color: #fff; font-size: 1rem; font-weight: 900; transition: opacity 0.5s ease, transform 0.5s ease; text-shadow: 0 0 12px rgba(168, 85, 247, 0.4); display: inline-block;">Carregando...</div>
+                        <div id="dynamic-service-price" style="color: #FCD34D; font-size: 0.85rem; font-weight: 800; transition: opacity 0.5s ease, transform 0.5s ease; display: inline-block;">R$ 0,00</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Chat Screen -->
             <div id="chat" class="sub-screen">
-                <header class="screen-header">
-                    <h3>Mensagens</h3>
+                <header class="screen-header" style="flex-direction: column; align-items: flex-start; padding: 1.5rem 1.5rem 0.5rem 1.5rem;">
+                    <h3 style="margin: 0;">Mensagens</h3>
+                    <div id="admin-chat-filters" style="display: none; margin-top: 15px; gap: 8px; flex-wrap: wrap;">
+                        <button class="filter-chip active" onclick="setChatFilter('all')">Todos</button>
+                        <button class="filter-chip" onclick="setChatFilter('professional')">Profissionais</button>
+                        <button class="filter-chip" onclick="setChatFilter('client')">Clientes</button>
+                    </div>
                 </header>
-                <div class="chat-list" id="chat-list">
-                    <!-- Injected by JS -->
+
+                <div class="search-bar-chat" style="padding: 0 1.5rem 1rem 1.5rem;">
+                    <div class="search-input-wrapper" style="background: #111; border: 1px solid #222; border-radius: 16px; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #666;">🔍</span>
+                        <input type="text" id="chat-search-input" placeholder="Buscar pessoas..." style="background: transparent; border: none; color: #fff; width: 100%; outline: none; font-size: 0.9rem;">
+                    </div>
+                </div>
+
+                <div class="chat-search-results" id="chat-search-results" style="display: none; padding: 0 1.5rem 1rem 1.5rem;">
+                    <h4 style="font-size: 0.75rem; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem;">Sugestões para conversar</h4>
+                    <div id="chat-search-list"></div>
+                </div>
+
+                <div id="chat-conversations-list">
+                    <div class="chat-list" id="chat-list" style="padding: 0 1.5rem;"></div>
                 </div>
             </div>
 
-            <!-- User Profile Screen -->
             <div id="perfil" class="sub-screen">
                 <header class="profile-header">
-                    <div class="profile-avatar" id="user-avatar-large"></div>
-                    <h3 id="user-name-display">Lucas Mendes</h3>
-                    <p id="user-email-display">lucas@email.com</p>
+                    <div class="profile-avatar-wrapper" id="profile-pic-trigger" style="cursor: pointer; position: relative;">
+                        <div class="profile-avatar" id="user-avatar-large"></div>
+                    </div>
+                    <input type="file" id="profile-photo-change-input" hidden accept="image/*">
+                    <h3 id="user-name-display">Usuário</h3>
+                    <p id="user-email-display">email@email.com</p>
                 </header>
-                <div class="profile-menu">
-                    <div class="menu-item" onclick="location.hash='#admin'">
-                        <span>📊 Painel Admin</span>
-                        <span>❯</span>
+
+                <div class="profile-content">
+                    <div class="profile-info-card">
+                        <div class="info-item">
+                            <span class="info-icon">⚲</span>
+                            <div class="info-text">
+                                <span class="info-label">Localização</span>
+                                <p class="info-value" id="user-location-display">Carregando...</p>
+                            </div>
+                        </div>
+
+                        <div class="info-item">
+                            <span class="info-icon">⌂</span>
+                            <div class="info-text">
+                                <span class="info-label">Endereço</span>
+                                <p class="info-value" id="user-address-display">Carregando...</p>
+                            </div>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-icon">⛉</span>
+                            <div class="info-text">
+                                <span class="info-label">Tipo de Conta</span>
+                                <p class="info-value" id="user-type-display" style="color: #fff; font-weight: 800;"></p>
+                            </div>
+                        </div>
+
+                        <div class="info-item" id="points-info-container" style="gap: 2px;">
+                            <span class="info-value points" id="user-points-inline-display"></span>
+                            <span id="user-plan-display" style="font-size: 0.75rem; color: #b085f5; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Plano Comum</span>
+                        </div>
+
+                        <div class="info-item">
+                            <button class="btn btn-sm" onclick="showOverlay('plans-selection')" style="background: #b085f5; color: #111; border: none; border-radius: 12px; padding: 8px 25px; font-weight: 900; box-shadow: 0 4px 15px rgba(176, 133, 245, 0.4);">Planos</button>
+                        </div>
                     </div>
-                    <div class="menu-item" onclick="location.hash='#agendamentos-lista'">
-                        <span>📅 Meus Agendamentos</span>
-                        <span>❯</span>
+
+
+
+
+                    <div class="profile-menu">
+                        <div class="menu-item" onclick="location.hash='#chat'" style="position: relative;">
+                            <span><span class="outline-icon">🗨</span> Chat / Mensagens</span>
+                            <div id="menu-chat-badge" style="display: none; position: absolute; right: 20px; top: 50%; transform: translateY(-50%); background: #b085f5; color: #111; font-size: 0.65rem; font-weight: 900; padding: 2px 6px; border-radius: 10px;">0</div>
+                        </div>
+                        <div class="menu-item" onclick="location.hash='#notificacoes'" style="position: relative;">
+                            <span><span class="outline-icon">🕭</span> Notificações</span>
+                            <div id="menu-notif-badge" style="display: none; position: absolute; right: 20px; top: 50%; transform: translateY(-50%); background: #b085f5; color: #111; font-size: 0.65rem; font-weight: 900; padding: 2px 6px; border-radius: 10px;">0</div>
+                        </div>
+                        <div class="menu-item" onclick="showOverlay('cupons-overlay')"><span><span class="outline-icon">🎫</span> Meus Cupons</span></div>
+                        <div class="menu-item" onclick="alert('Meu Financeiro em breve!')"><span><span class="outline-icon">$</span> Meu Financeiro</span></div>
+                        <div class="menu-item" onclick="alert('Ajuda e Suporte em breve!')"><span><span class="outline-icon">?</span> Ajuda</span></div>
+                        <div class="menu-item" onclick="location.hash='#doacoes'"><span><span class="outline-icon">♡</span> Doações</span></div>
+                        <div class="menu-item" onclick="location.hash='#editar-perfil'"><span><span class="outline-icon" style="color: #a855f7;">✎</span> Editar Perfil</span></div>
+                        <div class="menu-item" onclick="location.hash='#configuracoes'"><span><span class="outline-icon">⚙</span> Configurações</span></div>
+                        <div class="menu-item admin-only" onclick="fixAdminAccount()" style="display: none; border: 1px dashed #a855f7; margin: 10px 0; border-radius: 12px; background: rgba(168, 85, 247, 0.05);">
+                            <span style="color: #a855f7;"><span class="outline-icon">⚙</span> Sincronizar ADM</span>
+                        </div>
+                        <div class="logout" onclick="doLogout()" style="cursor:pointer; display: flex; align-items: center; gap: 10px; padding: 15px; color: #FBBF24; font-weight: 600; border-top: 1px solid #222;">
+                            <span class="outline-icon" style="color: #FBBF24;">⍈</span> Sair
+                        </div>
                     </div>
-                    <div class="menu-item" onclick="location.hash='#configuracoes'">
-                        <span>⚙️ Configurações</span>
-                        <span>❯</span>
+                </div>
+            </div>
+
+            <div id="notificacoes" class="sub-screen">
+                <header class="screen-header" style="text-align: center;">
+                    <h3>Notificações</h3>
+                </header>
+                <div id="notifications-container" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                    <!-- Notifications will be injected here -->
+                    <div style="text-align: center; padding: 4rem 1rem; opacity: 0.3;">
+                        <div style="font-size: 2rem; margin-bottom: 1rem;">🕭</div>
+                        <p style="font-size: 0.9rem; font-weight: 600;">Sem notificações novas.</p>
                     </div>
-                    <div class="menu-item logout" onclick="location.hash='#login'">
-                        <span>🚪 Sair</span>
+                </div>
+            </div>
+
+            <div id="doacoes" class="sub-screen">
+                <header class="screen-header" style="text-align: center; display: flex; align-items: center; justify-content: space-between; padding: 1.5rem;">
+                    <button class="back-btn" onclick="location.hash='#perfil'" style="background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; transition: background 0.3s;">‹</button>
+                    <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #fff;">Doações</h3>
+                    <div style="width: 40px;"></div> <!-- Spacer to keep header centered -->
+                </header>
+                <div style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; max-width: 450px; margin: 0 auto; text-align: center; align-items: center;">
+                    <div style="font-size: 3rem; animation: pulse 2s infinite; color: #b085f5; line-height: 1;">♡</div>
+                    
+                    <div style="background: rgba(176, 133, 245, 0.04); border: 1px solid rgba(176, 133, 245, 0.15); border-radius: 20px; padding: 1.5rem; text-align: left; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); backdrop-filter: blur(10px);">
+                        <h4 style="font-size: 1.1rem; color: #b085f5; margin-bottom: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Nosso Propósito</h4>
+                        <p style="font-size: 0.9rem; line-height: 1.6; color: #ddd; margin: 0;">
+                            O propósito do <strong>Zero</strong> é conectar diretamente as pessoas aos melhores profissionais da sua região, eliminando intermediários, complicações e reduzindo preços. Queremos agilizar a contratação de serviços e automatizar a rotina de agendamentos de forma rápida e justa para todos.
+                        </p>
+                    </div>
+                    
+                    <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 1.5rem; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                        <span style="font-size: 0.85rem; color: #888; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">Apoie o Projeto via PIX</span>
+                        <div style="background: #fff; padding: 10px; border-radius: 16px; width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                            <img src="assets/qrcode_pix.jpeg" alt="QR Code Pix" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;">
+                        </div>
+                        <span style="font-size: 0.75rem; color: #b085f5; font-weight: 600;">Escaneie o QR Code acima para doar e ajudar a manter a plataforma no ar!</span>
+                    </div>
+
+                    <button class="btn-primary" onclick="location.hash='#perfil'" style="width: 100%; padding: 1rem; border-radius: 12px; font-weight: 800; font-size: 0.95rem; border: none; background: #b085f5; color: #111; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 15px rgba(176, 133, 245, 0.4);">
+                        Voltar ao Perfil
+                    </button>
+                </div>
+            </div>
+
+            <div id="agendamento" class="sub-screen">
+                <header class="screen-header" style="text-align: center;">
+                    <h3>Agendamento</h3>
+                </header>
+                <div class="profile-content" id="agendamento-dynamic-content" style="flex:1; display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1rem;">
+                    <div style="text-align:center; margin-top: 3rem;"><span class="loader-mini"></span></div>
+                </div>
+            </div>
+
+            <div id="gastos" class="sub-screen">
+                <header class="screen-header" style="text-align: center; margin-bottom: 1.5rem;">
+                    <h3>Meus Gastos</h3>
+                </header>
+                <div class="profile-content" style="flex:1;">
+                    <div class="profile-info-card" style="align-items: center; text-align: center;">
+                        <span class="info-label">Total Gasto na Plataforma</span>
+                        <h2 id="gastos-total" style="color: #10B981; font-size: 2rem; margin: 10px 0;">R$ 0,00</h2>
+                    </div>
+
+                    <h4 style="margin-top: 1.5rem; margin-bottom: 1rem; text-align: center;">Meus Lugares Preferidos</h4>
+                    <div id="gastos-preferidos-list">
+                        <!-- Populated via JS -->
+                        <p style="color: #666; font-size: 0.9rem; text-align: center; margin: 1rem 0;">Você ainda não tem um lugar preferido.</p>
+                    </div>
+
+                    <h4 style="margin-top: 1.5rem; margin-bottom: 1rem; text-align: center;">Últimos 12 Agendamentos</h4>
+                    <div id="gastos-historico-list" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Populated via JS -->
+                        <p style="color: #666; font-size: 0.9rem; text-align: center; margin: 1rem 0;">Nenhum histórico encontrado.</p>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- Agendamento (Overlay) -->
-        <section id="agendamento" class="screen overlay">
+        <!-- Overlays -->
+        <section id="mapa" class="screen overlay">
             <header class="overlay-header">
                 <button class="back-btn" onclick="history.back()">←</button>
-                <h3>Agendar Horário</h3>
+                <h3>Mapa Local</h3>
             </header>
-            <div class="overlay-content">
-                <div class="calendar-mock">
-                    <h4>Maio 2024</h4>
-                    <div class="days-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 1rem; text-align: center;">
-                        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
-                        <!-- Mock days -->
-                        <div style="padding: 8px; color: #ccc;">28</div>
-                        <div style="padding: 8px; color: #ccc;">29</div>
-                        <div style="padding: 8px; color: #ccc;">30</div>
-                        <div style="padding: 8px; background: var(--primary); color: white; border-radius: 8px;">1</div>
-                        <div style="padding: 8px;">2</div><div style="padding: 8px;">3</div><div style="padding: 8px;">4</div>
+            <div class="overlay-content" style="padding: 0; position: relative;">
+                <div id="map-mock" style="width: 100%; height: 100%; background: #111; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1rem;">
+                    <div style="font-size: 3rem;">🗺️</div>
+                    <div id="map-address-marker" style="padding: 1rem; background: #ffffff; color: #000; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">
+                        📍 Meu Endereço: <span id="map-address-val">Carregando...</span>
+                    </div>
+                    <p style="color: #666;">Profissionais próximos marcados no mapa.</p>
+                </div>
+            </div>
+        </section>
+
+
+
+        <section id="editar-perfil" class="screen overlay">
+            <header class="overlay-header">
+                <button class="back-btn" onclick="history.back()">←</button>
+                <h3>Editar Perfil</h3>
+            </header>
+            <div class="overlay-content" style="padding: 1.5rem 1rem;">
+                <form id="edit-profile-form" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    
+                    <!-- Profile Picture Section -->
+                    <div class="avatar-preview-container" style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
+                        <div id="edit-avatar-preview" style="width: 100px; height: 100px; border-radius: 50%; border: 3px solid rgba(168,85,247,0.6); overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); box-shadow: 0 4px 20px rgba(168,85,247,0.2);">
+                            <span style="font-size: 2rem; font-weight: 800; color: #aaa;">U</span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; width: 100%; max-width: 320px; align-items: center;">
+                            <input type="text" id="edit-user-photo" placeholder="URL da foto de perfil" style="flex: 1; border-radius: 12px; padding: 0.65rem 1rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.85rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="edit-user-photo-upload-btn" onclick="document.getElementById('edit-user-photo-file').click()" style="width: auto; padding: 0.65rem 1rem; border-radius: 12px; margin: 0; background: rgba(168,85,247,0.2); border: 1px solid rgba(168,85,247,0.4); color: #fff; cursor: pointer;">📂</button>
+                            <input type="file" id="edit-user-photo-file" accept="image/*" style="display: none;">
+                        </div>
+                        <span style="font-size: 0.75rem; color: #999;">Insira uma URL ou faça upload de uma imagem</span>
+                    </div>
+
+                    <!-- Common Fields -->
+                    <div class="input-group">
+                        <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Nome Completo</label>
+                        <input type="text" id="edit-user-name" placeholder="Ex: Anderson Silva" required style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                    </div>
+
+                    <div class="input-group">
+                        <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Telefone / WhatsApp</label>
+                        <input type="text" id="edit-user-phone" placeholder="Ex: (11) 99999-9999" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                    </div>
+
+                    <div class="input-group">
+                        <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Cidade / Região</label>
+                        <input type="text" id="edit-user-city" placeholder="Ex: São Paulo, SP" required style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                    </div>
+
+                    <div class="input-group">
+                        <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Endereço</label>
+                        <div class="input-with-action" style="display: flex; gap: 0.5rem; width: 100%;">
+                            <input type="text" id="edit-user-address" placeholder="Rua, Bairro" style="flex: 1; border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+                            <button type="button" class="action-btn-input" onclick="window.openMapPicker('edit-user-address', 'edit-user-city')" style="width: auto; padding: 0.75rem 1.25rem; border-radius: 12px; background: rgba(168,85,247,0.2); border: 1px solid rgba(168,85,247,0.4); color: #fff; cursor: pointer;">📍</button>
+                        </div>
+                    </div>
+
+                    <!-- Client Specific Fields -->
+                    <div id="edit-client-fields" style="display: none; flex-direction: column; gap: 1.25rem;">
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Data de Nascimento</label>
+                            <input type="date" id="edit-user-birth" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%; color-scheme: dark;">
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Bio / Descrição</label>
+                            <textarea id="edit-user-bio" placeholder="Fale um pouco sobre você..." style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%; min-height: 100px; resize: vertical; font-family: inherit;"></textarea>
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Preferências de Serviço</label>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; background: rgba(255,255,255,0.02); padding: 1rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05);">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #eee; cursor: pointer;">
+                                    <input type="checkbox" name="edit-pref" value="beleza" style="accent-color: #a855f7;"> Beleza
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #eee; cursor: pointer;">
+                                    <input type="checkbox" name="edit-pref" value="reformas" style="accent-color: #a855f7;"> Reformas
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #eee; cursor: pointer;">
+                                    <input type="checkbox" name="edit-pref" value="saude" style="accent-color: #a855f7;"> Saúde
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #eee; cursor: pointer;">
+                                    <input type="checkbox" name="edit-pref" value="tecnologia" style="accent-color: #a855f7;"> Tecnologia
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Professional Specific Fields -->
+                    <div id="edit-professional-fields" style="display: none; flex-direction: column; gap: 1.25rem;">
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Nome da Empresa / Profissional</label>
+                            <input type="text" id="edit-user-company" placeholder="Ex: Barbearia do Marcos" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Categoria</label>
+                            <select id="edit-user-category" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.9); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                                <option value="Salão">Salão</option>
+                                <option value="Barbearia">Barbearia</option>
+                                <option value="Estúdio de Beleza">Estúdio de Beleza</option>
+                                <option value="Espaço">Espaço</option>
+                            </select>
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Especialidades</label>
+                            <input type="text" id="edit-user-specialties" placeholder="Ex: Degradê, Barboterapia (separadas por vírgula)" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Bio / Descrição</label>
+                            <textarea id="edit-prof-bio" placeholder="Conte sobre sua trajetória, especialidades e diferencial..." style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%; min-height: 100px; resize: vertical; font-family: inherit;"></textarea>
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Anos de Experiência</label>
+                            <input type="number" id="edit-user-experience" placeholder="Ex: 5" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Portfólio / Site</label>
+                            <input type="url" id="edit-user-portfolio" placeholder="Ex: https://meusite.com" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Redes Sociais (@seu_perfil)</label>
+                            <input type="text" id="edit-user-socials" placeholder="Ex: @marcos_barber" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Horário de Expediente</label>
+                            <div style="display: flex; gap: 0.75rem; width: 100%;">
+                                <input type="text" id="edit-user-working-start" placeholder="08:00" style="flex: 1; border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; text-align: center;">
+                                <span style="align-self: center; color: #999;">até</span>
+                                <input type="text" id="edit-user-working-end" placeholder="18:00" style="flex: 1; border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; text-align: center;">
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Preço Médio (Serviço Principal)</label>
+                            <input type="number" id="edit-user-price-range" placeholder="Ex: 50" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                        </div>
+
+                        <div class="input-group">
+                            <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Chave Pix</label>
+                            <input type="text" id="edit-user-pix" placeholder="Ex: cel ou email" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width: 100%; max-width: 100%; border-radius: 16px; padding: 0.9rem; font-weight: 800; background: linear-gradient(135deg, #a855f7, #6b21a8); color: #fff; box-shadow: 0 4px 15px rgba(168,85,247,0.3); border: none; cursor: pointer; margin-top: 1rem;">Salvar Alterações</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Map Picker Overlay -->
+        <section id="map-picker" class="screen overlay">
+            <header class="overlay-header">
+                <button class="back-btn" onclick="closeMapPicker()">←</button>
+                <h3>Selecione o Local</h3>
+                <button class="btn btn-primary btn-sm" id="confirm-map-location" style="width: auto; padding: 0.5rem 1rem;">Confirmar</button>
+            </header>
+            <div id="map-picker-container" style="height: 100%; width: 100%; position: relative;">
+                <!-- Address Search Bar inside Map -->
+                <div class="map-search-bar">
+                    <input type="text" id="map-search-input" placeholder="Rua ou CEP">
+                    <button id="btn-map-search-go">🔍</button>
+                </div>
+                <div class="map-center-pin">📍</div>
+            </div>
+        </section>
+
+        <!-- Modals -->
+        <div id="success-modal" class="modal-overlay">
+            <div class="success-modal">
+                <div class="success-icon-container"><div class="success-icon">✓</div></div>
+                <h3 id="success-modal-title">Sucesso!</h3>
+                <p id="success-modal-message">Ação concluída.</p>
+                <button id="success-modal-btn" class="btn btn-primary">Continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function handleCredentialResponse(response) {
+            const payload = JSON.parse(atob(response.credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            localStorage.setItem('user_type', 'client');
+            localStorage.setItem('user_name', payload.name);
+            localStorage.setItem('user_email', payload.email);
+            localStorage.setItem('user_photo', payload.picture);
+            window.location.hash = '#home';
+        }
+    </script>
+
+    <div id="plans-selection" class="screen overlay plans-overlay">
+        <header class="overlay-header">
+            <button class="back-btn" onclick="hideOverlay('plans-selection')">✕</button>
+            <h3>Upgrade de Conta</h3>
+            <div style="width: 40px;"></div>
+        </header>
+        <div class="overlay-content">
+            <p style="color: #888; text-align: center; margin-bottom: 2rem; font-weight: 500;">Escolha o melhor plano para o seu perfil e aproveite recursos exclusivos.</p>
+            
+            <div id="plans-container">
+                <!-- Preenchido pelo app.js -->
+            </div>
+            
+            <div id="payment-methods-section" style="display: none; margin-top: 2rem; animation: fadeIn 0.3s ease;">
+                <h4 style="margin-bottom: 1.25rem; color: #fff; text-align: center; font-weight: 800;">Selecione a Forma de Pagamento</h4>
+                <div class="payment-methods">
+                    <div class="method-btn" id="method-debito" onclick="selectPayment('debito')">💳 DÉBITO</div>
+                    <div class="method-btn" id="method-pix" onclick="selectPayment('pix')">💎 PIX</div>
+                </div>
+                <button class="btn" style="margin-top: 2rem; background: #fff; color: #000; font-weight: 900; height: 60px; border-radius: 18px;" onclick="confirmPlan()">CONFIRMAR ASSINATURA</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Meus Cupons Overlay -->
+    <div id="cupons-overlay" class="screen overlay">
+        <header class="overlay-header">
+            <button class="back-btn" onclick="hideOverlay('cupons-overlay')">✕</button>
+            <h3>Meus Cupons</h3>
+            <div style="width: 40px;"></div>
+        </header>
+        <div class="overlay-content" style="padding: 1.5rem 1rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <p style="color: #888; text-align: center; margin: 0; font-weight: 500; font-size: 0.9rem;">Aproveite seus cupons de desconto exclusivos nas suas próximas experiências!</p>
+            
+            <div class="coupons-list" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                
+                <!-- Coupon 1: Aniversariantes -->
+                <div class="coupon-card" style="background: rgba(168, 85, 247, 0.03); border: 2px dashed rgba(168, 85, 247, 0.3); padding: 1.25rem; border-radius: 18px; display: flex; flex-direction: column; gap: 8px; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: all 0.3s ease;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 1.5rem;">🎂</span>
+                        <span style="color: #10B981; font-size: 1.25rem; font-weight: 900; text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);">10% OFF</span>
+                    </div>
+                    <h4 style="color: #fff; margin: 0; font-size: 1rem; font-weight: 800;">Cupom de Aniversariante</h4>
+                    <p style="color: #aaa; margin: 0; font-size: 0.8rem; line-height: 1.4;">Comemore seu aniversário com 10% de desconto em qualquer serviço marcado!</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 6px 12px; border-radius: 10px; margin-top: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                        <code style="color: #b085f5; font-size: 0.95rem; font-weight: 900; letter-spacing: 1px;" id="code-niver10">NIVER10</code>
+                        <button onclick="copyCouponCode('NIVER10', this)" style="background: #b085f5; color: #111; border: none; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 900; cursor: pointer; transition: all 0.2s ease;">Copiar</button>
                     </div>
                 </div>
-                <div class="time-slots" style="margin-top: 2rem;">
-                    <h4>Horários Disponíveis</h4>
-                    <div id="slots-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 1rem;"></div>
-                </div>
-            </div>
-            <div class="overlay-footer">
-                <button class="btn btn-primary" onclick="alert('Agendamento realizado com sucesso!'); location.hash='#home'">Confirmar Agendamento</button>
-            </div>
-        </section>
 
-        <!-- Configurações (Overlay) -->
-        <section id="configuracoes" class="screen overlay">
-            <header class="overlay-header">
-                <button class="back-btn" onclick="history.back()">←</button>
-                <h3>Configurações</h3>
-            </header>
-            <div class="overlay-content">
-                <div class="settings-group">
-                    <div class="menu-item"><span>Notificações</span> <input type="checkbox" checked></div>
-                    <div class="menu-item"><span>Modo Escuro</span> <input type="checkbox"></div>
-                    <div class="menu-item"><span>Privacidade</span> <span>❯</span></div>
-                    <div class="menu-item"><span>Ajuda & Suporte</span> <span>❯</span></div>
+                <!-- Coupon 2: Parceiros -->
+                <div class="coupon-card" style="background: rgba(168, 85, 247, 0.03); border: 2px dashed rgba(168, 85, 247, 0.3); padding: 1.25rem; border-radius: 18px; display: flex; flex-direction: column; gap: 8px; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: all 0.3s ease;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 1.5rem;">🤝</span>
+                        <span style="color: #10B981; font-size: 1.25rem; font-weight: 900; text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);">10% OFF</span>
+                    </div>
+                    <h4 style="color: #fff; margin: 0; font-size: 1rem; font-weight: 800;">Cupom de Parceiro</h4>
+                    <p style="color: #aaa; margin: 0; font-size: 0.8rem; line-height: 1.4;">Desconto exclusivo de 10% para parceiros e colaboradores cadastrados.</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 6px 12px; border-radius: 10px; margin-top: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                        <code style="color: #b085f5; font-size: 0.95rem; font-weight: 900; letter-spacing: 1px;" id="code-parceiro10">PARCEIRO10</code>
+                        <button onclick="copyCouponCode('PARCEIRO10', this)" style="background: #b085f5; color: #111; border: none; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 900; cursor: pointer; transition: all 0.2s ease;">Copiar</button>
+                    </div>
                 </div>
-            </div>
-        </section>
 
-        <!-- Professional Details (Overlay) -->
-        <section id="professional-detail" class="screen overlay">
-            <header class="overlay-header">
-                <button class="back-btn" onclick="history.back()">←</button>
-                <h3>Perfil</h3>
-                <button class="share-btn">🔗</button>
-            </header>
-            <div class="overlay-content" id="prof-detail-content">
-                <!-- Injected by JS -->
-            </div>
-            <div class="overlay-footer">
-                <button class="btn btn-primary" id="btn-agendar">Agendar Agora</button>
-            </div>
-        </section>
-
-        <!-- Chat Detail (Overlay) -->
-        <section id="chat-detail" class="screen overlay">
-            <header class="overlay-header">
-                <button class="back-btn" onclick="history.back()">←</button>
-                <div class="chat-header-info">
-                    <div class="small-avatar" id="chat-avatar"></div>
-                    <h4 id="chat-name">Ana Oliveira</h4>
+                <!-- Coupon 3: Primeiro Agendamento -->
+                <div class="coupon-card" style="background: rgba(168, 85, 247, 0.03); border: 2px dashed rgba(168, 85, 247, 0.3); padding: 1.25rem; border-radius: 18px; display: flex; flex-direction: column; gap: 8px; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: all 0.3s ease;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 1.5rem;">✨</span>
+                        <span style="color: #10B981; font-size: 1.25rem; font-weight: 900; text-shadow: 0 0 10px rgba(16, 185, 129, 0.3);">10% OFF</span>
+                    </div>
+                    <h4 style="color: #fff; margin: 0; font-size: 1rem; font-weight: 800;">Primeiro Agendamento</h4>
+                    <p style="color: #aaa; margin: 0; font-size: 0.8rem; line-height: 1.4;">Garanta 10% de desconto no seu primeiríssimo agendamento com qualquer profissional!</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 6px 12px; border-radius: 10px; margin-top: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                        <code style="color: #b085f5; font-size: 0.95rem; font-weight: 900; letter-spacing: 1px;" id="code-primeiro10">PRIMEIRO10</code>
+                        <button onclick="copyCouponCode('PRIMEIRO10', this)" style="background: #b085f5; color: #111; border: none; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 900; cursor: pointer; transition: all 0.2s ease;">Copiar</button>
+                    </div>
                 </div>
-            </header>
-            <div class="chat-messages" id="chat-messages-container">
-                <!-- Injected by JS -->
-            </div>
-            <div class="chat-input-area">
-                <input type="text" placeholder="Sua mensagem...">
-                <button class="send-btn">➔</button>
-            </div>
-        </section>
 
-        <!-- Admin Dashboard (Overlay) -->
-        <section id="admin" class="screen overlay">
-            <header class="overlay-header">
-                <button class="back-btn" onclick="history.back()">←</button>
-                <h3>Painel Admin</h3>
-            </header>
-            <div class="overlay-content">
-                <div class="admin-stats-grid" id="admin-stats"></div>
-                <div class="admin-section">
-                    <h4>Pendentes de Aprovação</h4>
-                    <div id="pending-list"></div>
-                </div>
             </div>
-        </section>
-    <script src="js/data.js"></script>
-    <script src="js/app.js"></script>
+        </div>
+    </div>
+    
+    <div id="catalogo" class="screen overlay">
+        <header class="overlay-header">
+            <button class="back-btn" onclick="hideOverlay('catalogo')">✕</button>
+            <h3>Meu Catálogo</h3>
+            <div style="width: 40px;"></div>
+        </header>
+        <div class="overlay-content">
+            <div id="catalogo-plan-info" style="background: rgba(168, 85, 247, 0.1); border: 1px solid #a855f7; padding: 12px; border-radius: 12px; margin-bottom: 1.5rem; text-align: center;">
+                <span style="color: #a855f7; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">Plano Atual: <span id="catalogo-current-plan">Carregando...</span></span>
+            </div>
+            
+            <div id="catalogo-items">
+                <!-- Preenchido pelo app.js -->
+            </div>
+
+            <button id="btn-add-service" class="btn btn-primary" style="margin-top: 1rem; width: 100%; height: 55px; border-radius: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <span>+</span> Adicionar Serviço
+            </button>
+            <p id="catalogo-limit-msg" style="color: #666; font-size: 0.75rem; text-align: center; margin-top: 10px; display: none;">Você atingiu o limite do seu plano. <a href="javascript:void(0)" onclick="showOverlay('plans-selection')" style="color: #a855f7; font-weight: 700;">Faça Upgrade</a></p>
+        </div>
+    </div>
+    
+    <!-- Profile Home: Professional -->
+    <section id="professional-home" class="screen overlay">
+        <header class="overlay-header" style="background: transparent; border: none; position: absolute; z-index: 10;">
+            <button class="back-btn" onclick="hideOverlay('professional-home')" style="background: rgba(0,0,0,0.5); width: 40px; height: 40px; border-radius: 50%; color: #fff;">←</button>
+        </header>
+        <div class="overlay-content" style="padding: 0;" id="professional-home-content">
+            <!-- Populated via JS -->
+        </div>
+        <div class="floating-actions" style="position: absolute; bottom: 0; width: 100%; padding: 1.5rem; background: linear-gradient(to top, #000 70%, transparent); display: flex; gap: 1rem; z-index: 20;">
+            <button class="btn btn-primary" style="flex: 1; height: 60px; border-radius: 18px;" id="btn-prof-home-schedule">Agendar Agora</button>
+            <button class="btn" style="background: #1a1a1a; width: 60px; height: 60px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;" id="btn-prof-home-chat">🗨</button>
+        </div>
+    </section>
+
+    <!-- Profile Home: Client -->
+    <section id="client-home" class="screen overlay">
+        <header class="overlay-header" style="background: transparent; border: none; position: absolute; z-index: 10;">
+            <button class="back-btn" onclick="hideOverlay('client-home')" style="background: rgba(0,0,0,0.5); width: 40px; height: 40px; border-radius: 50%; color: #fff;">←</button>
+        </header>
+        <div class="overlay-content" style="padding: 0;" id="client-home-content">
+            <!-- Populated via JS -->
+        </div>
+        <div class="floating-actions" style="position: absolute; bottom: 0; width: 100%; padding: 1.5rem; background: linear-gradient(to top, #000 70%, transparent); display: flex; gap: 1rem; z-index: 20;">
+            <button class="btn btn-primary" style="flex: 1; height: 60px; border-radius: 18px;" id="btn-client-home-chat">Enviar Mensagem</button>
+        </div>
+    </section>
+
+    <div id="payment-processing" class="screen overlay" style="z-index: 2000; background: rgba(0,0,0,0.95);">
+        <div class="overlay-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
+            <div id="payment-status-icon-container">
+                <div id="payment-status-icon" class="loader-mini" style="width: 80px; height: 80px; border-width: 6px; border-top-color: #a855f7; margin-bottom: 2rem;"></div>
+            </div>
+            <h2 id="payment-status-title" style="color: #fff; font-weight: 900; margin-bottom: 1rem;">Processando Pagamento</h2>
+            <p id="payment-status-msg" style="color: #888; max-width: 280px; line-height: 1.6;">Estamos validando sua transação com a instituição financeira. Não feche esta tela.</p>
+            
+            <div id="pix-qr-container" style="display: none; margin: 2rem 0; padding: 25px; background: #000; border-radius: 24px; border: 1px solid #333; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+                <img src="/assets/qrcode_pix.jpeg" style="width: 220px; max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 12px; object-fit: contain; filter: brightness(1.1);" alt="QR Code PIX">
+                <p style="color: #fff; margin-top: 1.5rem; font-size: 0.9rem; font-weight: 800; letter-spacing: 0.5px;">VALOR: <span id="pix-value" style="color: #10B981;">R$ 0,00</span></p>
+                <div style="background: rgba(255, 193, 7, 0.1); border: 1px solid #ffc107; padding: 12px; border-radius: 12px; margin-top: 15px;">
+                    <p style="color: #ffc107; font-size: 0.8rem; font-weight: 800; margin-bottom: 5px;">⚠️ PAGAMENTO PENDENTE</p>
+                    <p style="color: #ccc; font-size: 0.7rem; line-height: 1.4;">Efetue o pagamento e envie o comprovante para o nosso suporte no chat para liberação imediata.</p>
+                </div>
+                <button class="btn" style="margin-top: 1.5rem; background: #fff; color: #000; font-weight: 900; height: 50px; border-radius: 14px;" onclick="window.location.hash='#chat-msg/support'; hideOverlay('payment-processing');">ENVIAR COMPROVANTE (CHAT)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Detail Overlay -->
+    <section id="chat-detail" class="screen overlay">
+        <header class="overlay-header">
+            <button class="back-btn" onclick="history.back()">←</button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div id="chat-avatar" style="width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 800;"></div>
+                <h3 id="chat-name">Nome</h3>
+            </div>
+            <div style="width: 40px;"></div>
+        </header>
+        <div class="overlay-content chat-messages" id="chat-messages-container" style="padding: 1.5rem; display: flex; flex-direction: column;">
+            <!-- Preenchido via JS -->
+        </div>
+        <!-- Horizontal conversations strip like WhatsApp -->
+        <div id="chat-quick-history" style="display: flex; gap: 16px; padding: 0.75rem 1.25rem 1.25rem 1.25rem; background: #070707; border-top: 1px solid #111; overflow-x: auto; white-space: nowrap; scrollbar-width: none; align-items: center;">
+            <!-- Preenchido via JS com as conversas ativas -->
+        </div>
+        <div class="chat-footer" style="padding: 1rem; background: #000; border-top: 1px solid #1a1a1a; display: flex; gap: 10px; align-items: center;">
+            <input type="text" id="chat-input" placeholder="Mensagem..." style="flex: 1; background: #111; border: 1px solid #222; border-radius: 20px; padding: 12px 18px; color: #fff; outline: none;">
+            <button id="btn-send-msg" style="background: #fff; border: none; width: 45px; height: 45px; border-radius: 50%; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; cursor: pointer;">🚀</button>
+        </div>
+    </section>
+
+    <script type="module" src="js/app.js"></script>
 </body>
 </html>
