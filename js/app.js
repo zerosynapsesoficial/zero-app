@@ -4624,6 +4624,10 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         const recentContainer = document.getElementById('recent-professionals-container');
         if (!container || !window.allProfessionalsCache) return;
 
+        if (!window.searchItemsLimit) {
+            window.searchItemsLimit = 10;
+        }
+
         const query = (searchInput.value || '').toLowerCase().trim();
         const categoryFilter = document.getElementById('category-filter');
         const selectedCategory = categoryFilter ? categoryFilter.value : 'Todos';
@@ -4682,13 +4686,16 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             });
         }
 
-        if (filtered.length === 0) {
+        const totalFiltered = filtered.length;
+        const sliced = filtered.slice(0, window.searchItemsLimit);
+
+        if (sliced.length === 0) {
             const emptyLabel = oppositeType === 'professional' ? 'profissional' : oppositeType === 'client' ? 'cliente' : 'resultado';
             container.innerHTML = `<div style="text-align:center; padding:2rem; color:#888;">Nenhum ${emptyLabel} encontrado.</div>`;
             return;
         }
 
-        container.innerHTML = filtered.map(p => {
+        let html = sliced.map(p => {
             const isProf = p.user_type === 'professional';
             const targetHash = isProf ? `#profissional-home/${p.id}` : `#client-home/${p.id}`;
             const avatarHtml = p.avatar_url 
@@ -4724,9 +4731,26 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 </div>
             </div>`;
         }).join('');
+
+        if (totalFiltered > window.searchItemsLimit) {
+            html += `
+            <div id="search-load-more-trigger" style="text-align:center; padding:1.25rem; color:#a855f7; font-weight:800; font-size:0.8rem; cursor:pointer; background:#111; border:1px dashed rgba(168,85,247,0.3); border-radius:16px; margin: 1rem 0; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 0.2s;" onclick="window.loadMoreSearchResults()">
+                <span class="refresh-spinner" style="width: 14px; height: 14px; border: 2px solid rgba(168, 85, 247, 0.2); border-top: 2px solid #a855f7; border-radius: 50%; animation: spin 0.8s linear infinite; box-sizing: border-box;"></span>
+                <span>CARREGANDO MAIS PROFISSIONAIS...</span>
+            </div>`;
+        }
+
+        container.innerHTML = html;
     }
 
     window.filterAndRenderSearch = filterAndRenderSearch;
+
+    window.loadMoreSearchResults = function() {
+        window.searchItemsLimit += 10;
+        if (typeof window.filterAndRenderSearch === 'function') {
+            window.filterAndRenderSearch();
+        }
+    };
 
     const sortToggleBtn = document.getElementById('search-sort-toggle');
     if (sortToggleBtn) {
@@ -4740,16 +4764,34 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
     const searchTrigger = document.getElementById('btn-search-trigger');
 
     if (searchInput) {
-        searchInput.addEventListener('input', filterAndRenderSearch);
+        searchInput.addEventListener('input', () => {
+            window.searchItemsLimit = 10;
+            filterAndRenderSearch();
+        });
     }
     if (categoryFilter) {
-        categoryFilter.addEventListener('change', filterAndRenderSearch);
+        categoryFilter.addEventListener('change', () => {
+            window.searchItemsLimit = 10;
+            filterAndRenderSearch();
+        });
     }
     if (searchTrigger) {
         searchTrigger.addEventListener('click', () => {
-            // Executa a busca real no banco de dados quando clica no ícone
+            window.searchItemsLimit = 10;
             if (typeof renderSearchProfessionals === 'function') {
                 renderSearchProfessionals();
+            }
+        });
+    }
+
+    const buscaScreen = document.getElementById('busca');
+    if (buscaScreen) {
+        buscaScreen.addEventListener('scroll', () => {
+            if (buscaScreen.scrollHeight - buscaScreen.scrollTop - buscaScreen.clientHeight < 80) {
+                const trigger = document.getElementById('search-load-more-trigger');
+                if (trigger) {
+                    window.loadMoreSearchResults();
+                }
             }
         });
     }
