@@ -8,21 +8,27 @@ let supabaseClient;
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- Initialize Supabase ---
-    // Hardcoding keys and using same-origin proxy to bypass CORS, local firewalls, and adblockers
-    const url = window.location.origin + "/api/supabase";
+    // Hardcoding keys and using same-origin proxy for REST while keeping raw WebSocket url for Realtime
+    const rawUrl = "https://oryguljbqcphbtiapvwk.supabase.co";
     const key = "sb_publishable_WaiQI8T9aLg9iJkV3nEZBg_C5M24-Z5";
 
     if (window.supabase) {
         try {
-            supabaseClient = window.supabase.createClient(url, key, {
+            supabaseClient = window.supabase.createClient(rawUrl, key, {
                 auth: {
                     persistSession: true,
                     autoRefreshToken: true,
                     detectSessionInUrl: true,
                     storage: window.localStorage
+                },
+                global: {
+                    fetch: (fetchUrl, fetchOptions) => {
+                        const rewrittenUrl = fetchUrl.replace(rawUrl, window.location.origin + "/api/supabase");
+                        return fetch(rewrittenUrl, fetchOptions);
+                    }
                 }
             });
-            console.log("Supabase Client created with persistence.");
+            console.log("Supabase Client created with same-origin proxy and native WebSocket support.");
             
             // Test connection
             supabaseClient.from('profiles').select('count', { count: 'exact', head: true })
