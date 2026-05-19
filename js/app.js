@@ -6878,21 +6878,23 @@ window.renderAgendamentoScreen = async function() {
         console.error("Critical error in renderAgendamentoScreen:", criticalError);
     }
 };
+
+initMobilePullToRefresh();
 });
 
-// --- Custom Mobile Pull-to-Refresh Gesture (2s hold) ---
+// --- Custom Mobile Pull-to-Refresh Gesture (1s hold) ---
 function initMobilePullToRefresh() {
-    if (window.innerWidth >= 600) return; // Only on mobile
+    if (window.innerWidth >= 600) return; // Only on mobile mobile
     
     let startY = 0;
     let currentY = 0;
     let isPulling = false;
     let pullTimer = null;
     let countdownInterval = null;
-    let secondsLeft = 2;
+    let secondsLeft = 1;
     
     // Create elegant glassmorphic indicator
-    const indicator = document.createElement('div');
+    const indicator = document.getElementById('pull-to-refresh-indicator') || document.createElement('div');
     indicator.id = 'pull-to-refresh-indicator';
     indicator.style.position = 'fixed';
     indicator.style.top = '-80px';
@@ -6900,8 +6902,8 @@ function initMobilePullToRefresh() {
     indicator.style.transform = 'translateX(-50%)';
     indicator.style.width = '240px';
     indicator.style.height = '60px';
-    indicator.style.background = 'rgba(26, 26, 26, 0.9)';
-    indicator.style.border = '1px solid rgba(176, 133, 245, 0.2)';
+    indicator.style.background = 'rgba(26, 26, 26, 0.95)';
+    indicator.style.border = '1px solid rgba(168, 85, 247, 0.3)';
     indicator.style.borderRadius = '30px';
     indicator.style.display = 'flex';
     indicator.style.alignItems = 'center';
@@ -6910,19 +6912,18 @@ function initMobilePullToRefresh() {
     indicator.style.color = '#fff';
     indicator.style.fontFamily = 'system-ui, sans-serif';
     indicator.style.fontSize = '0.85rem';
-    indicator.style.fontWeight = 'bold';
-    indicator.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
+    indicator.style.fontWeight = '800';
+    indicator.style.boxShadow = '0 10px 30px rgba(168, 85, 247, 0.25)';
     indicator.style.backdropFilter = 'blur(12px)';
     indicator.style.webkitBackdropFilter = 'blur(12px)';
-    indicator.style.zIndex = '9999';
-    indicator.style.transition = 'top 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    indicator.style.zIndex = '999999';
+    indicator.style.transition = 'top 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
     
     indicator.innerHTML = `
-        <div class="refresh-spinner" style="width: 20px; height: 20px; border: 3px solid rgba(176, 133, 245, 0.2); border-top: 3px solid #b085f5; border-radius: 50%; animation: spin 1s linear infinite; box-sizing: border-box;"></div>
-        <span id="pull-to-refresh-text">Puxe para atualizar</span>
+        <div class="refresh-spinner" style="width: 22px; height: 22px; border: 3px solid rgba(168, 85, 247, 0.2); border-top: 3px solid #a855f7; border-radius: 50%; animation: spin 0.8s linear infinite; box-sizing: border-box;"></div>
+        <span id="pull-to-refresh-text" style="text-shadow: 0 0 8px rgba(168, 85, 247, 0.3);">Puxe para recarregar</span>
     `;
     
-    // Add keyframe animation for spinner if not present
     if (!document.getElementById('refresh-spinner-style')) {
         const style = document.createElement('style');
         style.id = 'refresh-spinner-style';
@@ -6935,48 +6936,73 @@ function initMobilePullToRefresh() {
         document.head.appendChild(style);
     }
     
-    document.body.appendChild(indicator);
+    if (!document.body.contains(indicator)) {
+        document.body.appendChild(indicator);
+    }
     
     document.addEventListener('touchstart', (e) => {
-        // Only trigger if we are at the very top of the scroll
-        if (window.scrollY > 5) return;
+        // Verify if mobile screen
+        if (window.innerWidth >= 600) return;
+
+        // Verify active screen
+        const activeScreen = document.querySelector('.sub-screen.active');
+        if (!activeScreen) return;
+        
+        const allowedScreens = ['busca', 'gastos', 'home', 'agendamento', 'perfil'];
+        if (!allowedScreens.includes(activeScreen.id)) return;
+        
+        // Verify scroll position (both screen-specific scroll and window scroll)
+        if (window.scrollY > 5 || activeScreen.scrollTop > 5) return;
         
         startY = e.touches[0].clientY;
         isPulling = false;
-        secondsLeft = 2;
+        secondsLeft = 1;
     }, { passive: true });
     
     document.addEventListener('touchmove', (e) => {
-        if (window.scrollY > 5) return;
+        if (window.innerWidth >= 600) return;
+
+        const activeScreen = document.querySelector('.sub-screen.active');
+        if (!activeScreen) return;
+        
+        const allowedScreens = ['busca', 'gastos', 'home', 'agendamento', 'perfil'];
+        if (!allowedScreens.includes(activeScreen.id)) return;
+        
+        if (window.scrollY > 5 || activeScreen.scrollTop > 5) return;
         
         currentY = e.touches[0].clientY;
         const diff = currentY - startY;
         
         if (diff > 50) {
             isPulling = true;
+            
             // Limit pulling distance to max 90px
-            const pullDistance = Math.min(diff * 0.4, 90); 
+            const pullDistance = Math.min(diff * 0.45, 90); 
             indicator.style.top = `${pullDistance - 70}px`;
             
             const textEl = document.getElementById('pull-to-refresh-text');
             
-            // If pulled fully down, trigger the 2s countdown
+            // If pulled fully down, trigger the 1s countdown
             if (pullDistance >= 35 && !pullTimer) {
-                textEl.innerText = `Segure por 2s...`;
-                textEl.style.color = '#b085f5';
+                textEl.innerText = `Segure por 1s...`;
+                textEl.style.color = '#a855f7';
+                
+                // Quick physical feedback (haptic) if available
+                if (navigator.vibrate) navigator.vibrate(20);
                 
                 pullTimer = setTimeout(() => {
-                    textEl.innerText = `Atualizando página...`;
+                    textEl.innerText = `Recarregando...`;
+                    if (navigator.vibrate) navigator.vibrate(80);
                     window.location.reload();
-                }, 2000);
+                }, 1000);
                 
-                secondsLeft = 2;
+                secondsLeft = 1;
                 countdownInterval = setInterval(() => {
                     secondsLeft -= 1;
                     if (secondsLeft > 0) {
                         textEl.innerText = `Segure por ${secondsLeft}s...`;
                     } else {
-                        textEl.innerText = `Atualizando...`;
+                        textEl.innerText = `Recarregando...`;
                         clearInterval(countdownInterval);
                     }
                 }, 1000);
@@ -7000,7 +7026,7 @@ function initMobilePullToRefresh() {
         
         const textEl = document.getElementById('pull-to-refresh-text');
         if (textEl) {
-            textEl.innerText = `Puxe para atualizar`;
+            textEl.innerText = `Puxe para recarregar`;
             textEl.style.color = '#fff';
         }
     }, { passive: true });
