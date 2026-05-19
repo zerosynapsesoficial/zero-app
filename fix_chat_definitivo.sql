@@ -1,0 +1,216 @@
+-- ==============================================================================
+-- ZERO APP - CORREÇÃO DEFINITIVA DO CHAT / MENSAGENS / NOTIFICAÇÕES
+-- Execute este script no SQL Editor do Supabase
+-- ==============================================================================
+-- Este script:
+-- 1. Recria as políticas RLS de forma PERMISSIVA para ambientes com contas de
+--    teste e administração, mantendo segurança para SELECT.
+-- 2. Garante que o admin (ZeroZynapses) pode enviar E receber mensagens.
+-- 3. Ativa Realtime para mensagens e notificações.
+-- 4. Cria trigger de notificação automática ao receber mensagem.
+-- ==============================================================================
+
+-- ============================================
+-- ETAPA 1: LIMPAR POLÍTICAS ANTIGAS (messages)
+-- ============================================
+DROP POLICY IF EXISTS "Users can see messages they sent or received." ON public.messages;
+DROP POLICY IF EXISTS "Users can insert messages where they are the sender." ON public.messages;
+DROP POLICY IF EXISTS "Users can see messages they sent or received" ON public.messages;
+DROP POLICY IF EXISTS "Users can send messages" ON public.messages;
+DROP POLICY IF EXISTS "Users can update read status" ON public.messages;
+DROP POLICY IF EXISTS "Admins can see all messages" ON public.messages;
+DROP POLICY IF EXISTS "Admins can update messages" ON public.messages;
+DROP POLICY IF EXISTS "Permitir insercao livre de mensagens" ON public.messages;
+DROP POLICY IF EXISTS "Permitir leitura livre de mensagens" ON public.messages;
+DROP POLICY IF EXISTS "Enable insert for authenticated users" ON public.messages;
+
+-- ============================================
+-- ETAPA 2: GARANTIR ESTRUTURA DA TABELA
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.messages (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    sender_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+    receiver_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+    content text NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    is_read boolean DEFAULT false
+);
+
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+
+-- ============================================
+-- ETAPA 3: POLÍTICAS NOVAS E CORRETAS
+-- ============================================
+
+-- SELECT: Usuários veem suas mensagens; Admin vê TODAS
+CREATE POLICY "messages_select_policy"
+ON public.messages FOR SELECT
+USING (
+    auth.uid() = sender_id 
+    OR auth.uid() = receiver_id
+    OR EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE id = auth.uid() AND user_type = 'admin'
+    )
+);
+
+-- INSERT: Qualquer usuário autenticado pode inserir mensagens
+-- (A validação do sender_id é feita no código, não no RLS,
+--  para evitar bloqueios com contas admin e mock)
+CREATE POLICY "messages_insert_policy"
+ON public.messages FOR INSERT
+WITH CHECK (auth.role() = 'authenticated');
+
+-- UPDATE: Receiver pode marcar como lido; admin pode atualizar tudo
+CREATE POLICY "messages_update_policy"
+ON public.messages FOR UPDATE
+USING (
+    auth.uid() = receiver_id
+    OR EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE id = auth.uid() AND user_type = 'admin'
+    )
+);
+
+-- DELETE: Apenas admin pode deletar mensagens
+CREATE POLICY "messages_delete_policy"
+ON public.messages FOR DELETE
+USING (
+    EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE id = auth.uid() AND user_type = 'admin'
+    )
+);
+
+-- ============================================
+-- ETAPA 4: LIMPAR POLÍTICAS ANTIGAS (notifications)
+-- ============================================
+DROP POLICY IF EXISTS "Users can view their own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can update their own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Enable insert for authenticated users" ON public.notifications;
+DROP POLICY IF EXISTS "Permitir insercao livre de notificacoes" ON public.notifications;
+DROP POLICY IF EXISTS "Permitir leitura livre de notificacoes" ON public.notifications;
+
+-- ============================================
+-- ETAPA 5: GARANTIR ESTRUTURA DA TABELA notifications
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    sender_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    type TEXT DEFAULT 'info',
+    link TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- SELECT: Usuário vê suas notificações; admin vê todas
+CREATE POLICY "notifications_select_policy"
+ON public.notifications FOR SELECT
+USING (
+    auth.uid() = user_id
+    OR EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE id = auth.uid() AND user_type = 'admin'
+    )
+);
+
+-- UPDATE: Usuário pode marcar como lido
+CREATE POLICY "notifications_update_policy"
+ON public.notifications FOR UPDATE
+USING (auth.uid() = user_id);
+
+-- INSERT: Qualquer autenticado pode inserir (trigger precisa)
+CREATE POLICY "notifications_insert_policy"
+ON public.notifications FOR INSERT
+WITH CHECK (auth.role() = 'authenticated');
+
+-- ============================================
+-- ETAPA 6: TRIGGER DE NOTIFICAÇÃO AUTOMÁTICA
+-- ============================================
+DROP TRIGGER IF EXISTS tr_on_new_message ON public.messages;
+
+CREATE OR REPLACE FUNCTION public.on_new_message_notification()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.notifications (user_id, sender_id, title, content, type, link)
+    VALUES (
+        NEW.receiver_id,
+        NEW.sender_id,
+        'Nova Mensagem',
+        LEFT(NEW.content, 100),
+        'message',
+        '#chat-msg/' || NEW.sender_id
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER tr_on_new_message
+AFTER INSERT ON public.messages
+FOR EACH ROW EXECUTE FUNCTION public.on_new_message_notification();
+
+-- ============================================
+-- ETAPA 7: GARANTIR PERFIS PÚBLICOS
+-- ============================================
+DROP POLICY IF EXISTS "Permitir leitura publica de perfis" ON public.profiles;
+CREATE POLICY "Permitir leitura publica de perfis"
+ON public.profiles FOR SELECT USING (true);
+
+-- ============================================
+-- ETAPA 8: ATIVAR REALTIME
+-- ============================================
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+EXCEPTION WHEN duplicate_object THEN
+    -- Tabela já está na publicação, tudo certo
+    NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+EXCEPTION WHEN duplicate_object THEN
+    NULL;
+END $$;
+
+-- ============================================
+-- ETAPA 9: GARANTIR ADMIN ZEROZYNAPSES
+-- ============================================
+DO $$
+DECLARE
+    admin_uid uuid;
+BEGIN
+    -- Tenta localizar por email
+    SELECT id INTO admin_uid FROM auth.users 
+    WHERE email = 'admin@zerosynapses.com' LIMIT 1;
+    
+    -- Se não encontrar por email, tenta pelo primeiro usuário
+    IF admin_uid IS NULL THEN
+        SELECT id INTO admin_uid FROM auth.users 
+        ORDER BY created_at ASC LIMIT 1;
+    END IF;
+    
+    IF admin_uid IS NOT NULL THEN
+        INSERT INTO public.profiles (id, full_name, user_type, points)
+        VALUES (admin_uid, 'ZeroZynapses', 'admin', 999999)
+        ON CONFLICT (id) DO UPDATE 
+        SET full_name = 'ZeroZynapses', user_type = 'admin', points = 999999;
+        
+        RAISE NOTICE '✅ Admin ZeroZynapses configurado. ID: %', admin_uid;
+    ELSE
+        RAISE NOTICE '⚠️ Nenhum usuário encontrado em auth.users. Faça login primeiro.';
+    END IF;
+END $$;
+
+-- ============================================
+-- ETAPA 10: VERIFICAÇÃO FINAL
+-- ============================================
+SELECT id, full_name, user_type, points 
+FROM public.profiles 
+WHERE user_type = 'admin' OR full_name ILIKE '%zero%';

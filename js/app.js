@@ -4461,6 +4461,29 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             if (result.error) throw result.error;
             const users = result.data || [];
 
+            // Extrai a avaliação (rating) de preferences para usuários dinâmicos profissionais
+            users.forEach(u => {
+                if (u.user_type === 'professional') {
+                    let rVal = parseFloat(u.rating);
+                    if (isNaN(rVal)) {
+                        if (u.preferences) {
+                            try {
+                                const parsed = typeof u.preferences === 'string' ? JSON.parse(u.preferences) : u.preferences;
+                                if (parsed && parsed.rating !== undefined) {
+                                    rVal = parseFloat(parsed.rating);
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    if (isNaN(rVal)) {
+                        // Rating estável e variado de fallback baseado no ID do profissional
+                        const code = u.id ? u.id.split('-')[0].split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) : 0;
+                        rVal = code % 4 === 0 ? 2.5 + (code % 15) * 0.1 : 4.0 + (code % 11) * 0.1;
+                    }
+                    u.rating = rVal.toFixed(1);
+                }
+            });
+
             // Merge com dados locais para demonstração/riqueza
             const mergedUsers = [...users];
             
@@ -4583,13 +4606,13 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     : `<div style="width:100%; height:100%; background:linear-gradient(135deg, #1a1a1a, #000); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.1rem; border-radius:50%; border: 1px solid #333;">${(p.full_name || p.name || 'P')[0].toUpperCase()}</div>`;
                 
                 return `
-                <div class="prof-card" style="min-width: 96px; max-width: 96px; background: #111; border: 1px solid #222; padding: 0.45rem 0.4rem; border-radius: 12px; text-align: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.4);" onclick="location.hash='#profissional/${p.id}'">
-                    <div style="width:34px; height:34px; margin: 0 auto 0.3rem;">
+                <div class="prof-card" style="min-width: 110px; max-width: 110px; background: #111; border: 1px solid #222; padding: 0.55rem 0.5rem; border-radius: 12px; text-align: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.4);" onclick="location.hash='#profissional/${p.id}'">
+                    <div style="width:38px; height:38px; margin: 0 auto 0.35rem;">
                         ${avatarHtml}
                     </div>
-                    <div style="font-weight:800; font-size:0.75rem; color: #fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.full_name || p.name || 'Profissional'}</div>
-                    <div style="font-size:0.65rem; color:#b085f5; font-weight: 700; margin-top: 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.specialty || p.category || 'Serviços'}</div>
-                    <div style="font-size:0.55rem; color:#888; font-weight: 500; margin-top: 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.address || p.city || 'São Paulo'}</div>
+                    <div style="font-weight:800; font-size:0.8rem; color: #fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.full_name || p.name || 'Profissional'}</div>
+                    <div style="font-size:0.68rem; color:#b085f5; font-weight: 700; margin-top: 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.specialty || p.category || 'Serviços'}</div>
+                    <div style="font-size:0.58rem; color:#888; font-weight: 500; margin-top: 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.address || p.city || 'São Paulo'}</div>
                 </div>`;
             }).join('');
 

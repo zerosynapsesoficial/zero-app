@@ -1,0 +1,2750 @@
+console.log("🚀 Zero App JS Starting...");
+import { DATA } from './data.js';
+
+// --- Supabase Configuration ---
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+let supabaseClient;
+
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Initialize Supabase ---
+    // Hardcoding keys temporarily to fix the "Invalid API key" issue
+    const url = "https://oryguljbqcphbtiapvwk.supabase.co";
+    const key = "sb_publishable_WaiQI8T9aLg9iJkV3nEZBg_C5M24-Z5";
+
+    if (window.supabase) {
+        try {
+            supabaseClient = window.supabase.createClient(url, key);
+            console.log("Supabase Client created.");
+            
+            // Test connection
+            supabaseClient.from('profiles').select('count', { count: 'exact', head: true })
+                .then(({ error }) => {
+                    if (error) {
+                        console.error("Supabase Connection Test Failed:", error.message);
+                        if (error.message.includes("API key")) {
+                            alert("ERRO CRÍTICO: A chave do Supabase no código é inválida para o projeto " + url);
+                        }
+                    } else {
+                        console.log("Supabase Connection Test Successful.");
+                    }
+                });
+        } catch (e) {
+            console.error("Error creating Supabase client:", e);
+        }
+    } else {
+        console.error("Supabase SDK not loaded.");
+    }
+
+    // --- Mouse Interactive Effect (Flashlight) ---
+    const appContainer = document.getElementById('app');
+    if (appContainer) {
+        appContainer.addEventListener('mousemove', (e) => {
+            const rect = appContainer.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * 100;
+            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            appContainer.style.setProperty('--mouse-x', `${x}%`);
+            appContainer.style.setProperty('--mouse-y', `${y}%`);
+        });
+    }
+
+    // --- Auth State Listener (Auto-login on confirm) ---
+    if (supabaseClient) {
+        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            console.log("Auth Event:", event);
+            
+            if (session && session.user) {
+                const user = session.user;
+                localStorage.setItem('user_email', user.email);
+
+                // 1. Redirecionamento Imediato (Não espera o banco)
+                if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && 
+                    (window.location.hash === '#login' || window.location.hash === '' || window.location.hash === '#splash')) {
+                    console.log("Redirecting to home immediately...");
+                    
+                    // Fallback imediato para localStorage com dados da sessão
+                    localStorage.setItem('user_type', user.user_metadata.user_type || 'client');
+                    localStorage.setItem('user_name', user.user_metadata.full_name || user.email);
+                    
+                    window.location.hash = '#home';
+                }
+
+                // 2. Busca de Perfil em Segundo Plano (Background)
+                fetchProfileInBackground(user);
+                updateUserUI();
+            } else if (event === 'SIGNED_OUT') {
+                localStorage.clear();
+                window.location.hash = '#login';
+            }
+        });
+    }
+
+    async function fetchProfileInBackground(user) {
+        try {
+            const { data: profile, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+
+            if (profile) {
+                console.log("Profile fetched in background.");
+                localStorage.setItem('user_type', profile.user_type || 'client');
+                localStorage.setItem('user_name', profile.full_name || user.email);
+                localStorage.setItem('user_photo', profile.avatar_url || '');
+                localStorage.setItem('user_city', profile.city || 'São Paulo, SP');
+                localStorage.setItem('user_address', profile.address || '');
+                localStorage.setItem('user_points', profile.points !== null ? profile.points : 10);
+                updateUserUI(); // Atualiza a UI com os dados novos quando chegarem
+            }
+        } catch (err) {
+            console.warn("Could not fetch profile in background:", err.message);
+            // If it's a 406 (Not Acceptable), it usually means the column avatar_url is missing
+            if (err.message && err.message.includes("406")) {
+                console.log("Tip: Check if 'avatar_url' column exists in 'profiles' table.");
+            }
+        }
+    }
+
+    // --- Router ---
+    const routes = {
+        '#splash': () => showScreen('splash'),
+        '#onboarding': () => showScreen('onboarding'),
+        '#login': () => {
+            // Removido auto-logout no hash #login para evitar deslogar no F5
+            showScreen('login');
+        },
+        '#register': () => showScreen('register'),
+        '#user-type-selection': () => showScreen('user-type-selection'),
+        '#register-client': () => showScreen('register-client'),
+        '#register-professional': () => showScreen('register-professional'),
+        '#home': () => showSubScreen('home'),
+        '#busca': () => {
+            showSubScreen('busca');
+            if (typeof renderSearchProfessionals === 'function') renderSearchProfessionals();
+        },
+        '#chat': () => showSubScreen('chat'),
+        '#perfil': () => showSubScreen('perfil'),
+        '#profissional': () => showOverlay('professional-detail'),
+        '#agendamento': () => {
+            showSubScreen('agendamento');
+            if (typeof renderAgendamentosList === 'function') renderAgendamentosList();
+        },
+        '#chat-msg': () => showOverlay('chat-detail'),
+        '#configuracoes': () => showOverlay('configuracoes'),
+        '#admin': () => showOverlay('admin'),
+        '#gastos': () => {
+            showSubScreen('gastos');
+            // Futuramente: renderGastosData();
+        },
+        '#financeiro': () => {
+            showOverlay('financeiro');
+            renderFinanceList();
+        },
+        '#dashboard-profissional': () => {
+            showOverlay('dashboard-profissional');
+            renderDashboardProfissional();
+        },
+        '#dashboard-cliente': () => {
+            showOverlay('dashboard-cliente');
+            renderDashboardCliente();
+        },
+        '#catalogo': () => {
+            showOverlay('catalogo');
+            renderCatalogo();
+        },
+        '#mapa': () => {
+            showOverlay('mapa');
+            renderMapaRede();
+        },
+        '#editar-perfil': () => {
+            showOverlay('editar-perfil');
+            populateEditForm();
+        }
+    };
+
+    function handleRoute() {
+        const hash = window.location.hash || '#splash';
+        
+        if (hash.startsWith('#profissional/')) {
+            const id = hash.split('/')[1];
+            renderProfessionalDetail(id);
+            showOverlay('professional-detail');
+            return;
+        }
+
+        if (hash.startsWith('#profissional-home/')) {
+            const id = hash.split('/')[1];
+            renderProfessionalHome(id);
+            showOverlay('professional-home');
+            return;
+        }
+
+        if (hash.startsWith('#client-home/')) {
+            const id = hash.split('/')[1];
+            renderClientHome(id);
+            showOverlay('client-home');
+            return;
+        }
+
+        if (hash.startsWith('#chat-msg/')) {
+            const id = hash.split('/')[1];
+            renderChatDetail(id);
+            showOverlay('chat-detail');
+            return;
+        }
+
+        const route = routes[hash];
+        if (route) route();
+    }
+
+    window.addEventListener('hashchange', handleRoute);
+
+    // --- Screen Logic ---
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        const screen = document.getElementById(id);
+        if (screen) screen.classList.add('active');
+    }
+
+    function showSubScreen(id) {
+        showScreen('main-content');
+        document.querySelectorAll('.sub-screen').forEach(s => s.classList.remove('active'));
+        const sub = document.getElementById(id);
+        if (sub) sub.classList.add('active');
+        
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.screen === id);
+        });
+
+        document.querySelectorAll('.top-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.getAttribute('href') === `#${id}`);
+        });
+    }
+
+    window.showOverlay = function(id) {
+        const overlay = document.getElementById(id);
+        if (overlay) overlay.classList.add('active');
+        if (id === 'plans-selection') renderPlans();
+    };
+
+    window.hideOverlay = function(id) {
+        const overlay = document.getElementById(id);
+        if (overlay) overlay.classList.remove('active');
+    };
+
+    // --- Subscription Plans Logic ---
+    window.selectedPlan = null;
+    window.selectedPayment = null;
+
+    window.renderPlans = function() {
+        const type = localStorage.getItem('user_type') || 'client';
+        const container = document.getElementById('plans-container');
+        const titleEl = document.querySelector('#plans-selection h3');
+        const msgEl = document.querySelector('#plans-selection .overlay-content p');
+        const methodsSection = document.getElementById('payment-methods-section');
+        
+        if (!container) return;
+
+        if (type === 'admin') {
+            if (titleEl) titleEl.innerText = "Doar Pontos";
+            if (msgEl) msgEl.innerText = "Selecione um usuário para adicionar pontos bônus à conta.";
+            if (methodsSection) methodsSection.style.display = 'none';
+            renderAdminGiftPoints();
+            return;
+        }
+
+        // Reset for normal users
+        if (titleEl) titleEl.innerText = "Upgrade de Conta";
+        if (msgEl) msgEl.innerText = "Escolha o melhor plano para o seu perfil e aproveite recursos exclusivos.";
+
+        const plans = type === 'professional' ? [
+            { id: 'comum_prof', name: 'Plano Comum', price: 25, features: ['Visibilidade Básica', 'Agenda Digital', '3 Serviços no Catálogo'] },
+            { id: 'plus_prof', name: 'Plano Plus', price: 60, features: ['Destaque na Busca', 'Até 5 Serviços no Catálogo', 'Relatórios Financeiros', 'Suporte Prioritário'] }
+        ] : [
+            { id: 'comum_client', name: 'Plano Comum', price: 0, features: ['Busca de Profissionais', 'Agendamento Online', 'Histórico'] },
+            { id: 'plus_client', name: 'Plano Plus', price: 40, features: ['Cashback em Pontos', 'Descontos Exclusivos', 'Suporte VIP'] }
+        ];
+
+        container.innerHTML = plans.map(p => `
+            <div class="plan-card" id="plan-${p.id}" onclick="selectPlan('${p.id}')">
+                <div style="font-weight: 800; font-size: 1.25rem; color: #fff;">${p.name}</div>
+                <div class="price">${p.price === 0 ? 'Grátis' : 'R$ ' + p.price + '/mês'}</div>
+                <ul style="list-style: none; padding: 0; color: #888; font-size: 0.9rem;">
+                    ${p.features.map(f => `<li style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--primary-accent); font-weight: 900;">✓</span> ${f}
+                    </li>`).join('')}
+                </ul>
+            </div>
+        `).join('');
+        
+        // Reset state
+        window.selectedPlan = null;
+        window.selectedPayment = null;
+        if (methodsSection) methodsSection.style.display = 'none';
+        document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
+    };
+
+    window.renderAdminGiftPoints = async function() {
+        const container = document.getElementById('plans-container');
+        container.innerHTML = '<div class="loader-mini" style="margin: 2rem auto;"></div>';
+
+        try {
+            const { data: profiles, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .order('full_name', { ascending: true })
+                .limit(30);
+
+            if (error) throw error;
+
+            container.innerHTML = profiles.map(p => `
+                <div class="plan-card" style="text-align: left; padding: 1.25rem; gap: 15px; cursor: default; border-color: rgba(255,255,255,0.05);">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 1rem;">
+                        <div style="width: 45px; height: 45px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; overflow: hidden; border: 1px solid #333;">
+                            ${p.avatar_url ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` : '👤'}
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${p.full_name || 'Usuário'}</div>
+                            <div style="font-size: 0.7rem; color: #666; font-weight: 600; text-transform: uppercase;">
+                                ${p.user_type === 'professional' ? '💼 Pro' : '👤 Cliente'} • <span style="color: var(--primary-accent);">${p.points || 0} pts</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="number" id="pts-input-${p.id}" placeholder="Quantidade" style="flex: 1; background: #000; border: 1px solid #333; color: #fff; padding: 10px; border-radius: 12px; font-weight: 800; font-size: 0.85rem;">
+                        <button class="btn btn-sm" onclick="giftPoints('${p.id}', '${p.full_name || 'Usuário'}')" style="background: var(--primary-accent); padding: 0 15px; border-radius: 12px; font-weight: 900; font-size: 0.75rem;">DOAR</button>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (err) {
+            console.error("Erro ao carregar usuários:", err);
+            container.innerHTML = '<p style="color: #ff4444; text-align: center; padding: 2rem;">Erro ao carregar lista de usuários.</p>';
+        }
+    };
+
+    window.giftPoints = async function(userId, name) {
+        const input = document.getElementById(`pts-input-${userId}`);
+        const amount = parseInt(input ? input.value : 0);
+
+        if (!amount || amount <= 0) return alert("Informe uma quantidade válida de pontos.");
+
+        try {
+            // Get current points first
+            const { data: profile } = await supabaseClient.from('profiles').select('points').eq('id', userId).single();
+            const currentPoints = profile ? (profile.points || 0) : 0;
+
+            const { error } = await supabaseClient
+                .from('profiles')
+                .update({ points: currentPoints + amount })
+                .eq('id', userId);
+
+            if (error) throw error;
+
+            showSuccessModal('Doação Realizada!', `${amount} pontos foram creditados na conta de ${name}.`);
+            renderAdminGiftPoints(); // Refresh list to show new points
+
+        } catch (err) {
+            console.error("Erro ao doar pontos:", err);
+            alert("Não foi possível processar a doação no momento.");
+        }
+    };
+
+    window.selectPlan = function(id) {
+        window.selectedPlan = id;
+        document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('active'));
+        const el = document.getElementById(`plan-${id}`);
+        if (el) el.classList.add('active');
+        
+        const methodsSection = document.getElementById('payment-methods-section');
+        if (methodsSection) {
+            methodsSection.style.display = 'block';
+            methodsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    };
+
+    window.selectPayment = function(method) {
+        window.selectedPayment = method;
+        document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
+        const el = document.getElementById(`method-${method}`);
+        if (el) el.classList.add('selected');
+    };
+
+    window.confirmPlan = function() {
+        if (!window.selectedPlan) return alert("Selecione um plano.");
+        if (!window.selectedPayment) return alert("Selecione a forma de pagamento.");
+        
+        const type = localStorage.getItem('user_type') || 'client';
+        const plans = type === 'professional' ? [
+            { id: 'comum_prof', name: 'Plano Comum', price: 25 },
+            { id: 'premium_prof', name: 'Plano Premium', price: 60 }
+        ] : [
+            { id: 'comum_client', name: 'Plano Comum', price: 0 },
+            { id: 'plus_client', name: 'Plano Plus', price: 40 }
+        ];
+        const planObj = plans.find(p => p.id === window.selectedPlan);
+
+        // UI Elements
+        const procOverlay = document.getElementById('payment-processing');
+        const statusTitle = document.getElementById('payment-status-title');
+        const statusMsg = document.getElementById('payment-status-msg');
+        const statusIcon = document.getElementById('payment-status-icon');
+        const qrContainer = document.getElementById('pix-qr-container');
+        const pixValueLabel = document.getElementById('pix-value');
+
+        if (!procOverlay || !statusTitle || !statusIcon) return;
+
+        // Reset UI to processing state
+        statusTitle.innerText = "Processando Pagamento";
+        statusMsg.innerText = "Estamos validando sua transação com a instituição financeira. Não feche esta tela.";
+        statusIcon.className = "loader-mini";
+        statusIcon.innerHTML = "";
+        qrContainer.style.display = "none";
+        procOverlay.classList.add('active');
+
+        if (window.selectedPayment === 'pix') {
+            statusTitle.innerText = "PAGAMENTO PENDENTE";
+            statusMsg.innerText = "Aguardando transferência bancária via PIX. Use o QR Code abaixo.";
+            if (pixValueLabel) pixValueLabel.innerText = `R$ ${planObj.price.toFixed(2)}`;
+            qrContainer.style.display = "block";
+            
+            // No automatic polling - "Travar" a tela conforme pedido
+            if (window.activePaymentPolling) clearInterval(window.activePaymentPolling);
+        } else {
+            // Simulate direct confirmation for Debit (4 seconds delay)
+            setTimeout(() => {
+                window.finalizePaymentSuccess(planObj);
+            }, 4000);
+        }
+    };
+
+    window.startPaymentPolling = function(planObj) {
+        const statusMsg = document.getElementById('payment-status-msg');
+        let attempts = 0;
+        const maxAttempts = 5; // Simulate that it takes some time to detect
+
+        const pollInterval = setInterval(() => {
+            attempts++;
+            console.log(`[Payment Gateway] Checking status... Attempt ${attempts}`);
+            
+            if (statusMsg) {
+                statusMsg.innerText = `Verificando confirmação bancária... (${attempts})`;
+            }
+
+            // In a real app, you would do: 
+            // const { data } = await fetch('/api/check-payment?id=' + chargeId);
+            // if (data.status === 'paid') { ... }
+
+            if (attempts >= 4) { // Simulate receiving the Webhook/Confirmation after 12 seconds (3s * 4)
+                clearInterval(pollInterval);
+                window.finalizePaymentSuccess(planObj);
+            }
+        }, 3000);
+
+        // Store interval ID in case user cancels or overlay is hidden
+        window.activePaymentPolling = pollInterval;
+    };
+
+    window.finalizePaymentSuccess = function(planObj) {
+        const procOverlay = document.getElementById('payment-processing');
+        const statusTitle = document.getElementById('payment-status-title');
+        const statusMsg = document.getElementById('payment-status-msg');
+        const statusIcon = document.getElementById('payment-status-icon');
+        const qrContainer = document.getElementById('pix-qr-container');
+
+        if (!statusIcon || !statusTitle) return;
+
+        // Visual Success Feedback (Gateway Confirmed)
+        console.log("[Payment Gateway] Webhook Received: PAYMENT_CONFIRMED");
+        
+        statusIcon.className = "";
+        statusIcon.innerHTML = `<div style="width: 80px; height: 80px; background: #10B981; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #fff; margin-bottom: 2rem; animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">✓</div>`;
+        statusTitle.innerText = "Pagamento Confirmado!";
+        statusMsg.innerText = "Recebemos a confirmação do seu banco. Sua assinatura foi ativada com sucesso!";
+        qrContainer.style.display = "none";
+
+        // Persistent update in database/storage
+        if (planObj) {
+            localStorage.setItem('user_subscription_plan', planObj.name);
+            // In real app: await supabaseClient.from('profiles').update({ subscription_tier: planObj.id })...
+        }
+
+        setTimeout(() => {
+            if (procOverlay) procOverlay.classList.remove('active');
+            hideOverlay('plans-selection');
+            updateUserUI();
+            showSuccessModal('Upgrade Concluído!', `Obrigado! Você agora é ${planObj ? planObj.name : 'Premium'}!`);
+            statusIcon.innerHTML = ""; 
+        }, 3000);
+    };
+
+    // --- Initial Flow ---
+
+    // Pequeno delay para permitir que o onAuthStateChange recupere a sessão
+    // --- Initial Navigation & Session Check ---
+    // --- Initial Navigation & Session Check ---
+    (async () => {
+        const currentHash = window.location.hash;
+        const localUser = localStorage.getItem('user_email');
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        
+        if (session || localUser) {
+            console.log("Session verified (Local or Supabase)");
+            
+            // Se estiver em uma tela de auth, vai para home
+            if (currentHash === '' || currentHash === '#splash' || currentHash === '#login' || currentHash === '#welcome') {
+                window.location.hash = '#home';
+            } else {
+                // Se estiver em um overlay via Hash, garante que a tela de fundo seja a home
+                const isOverlay = ['#catalogo','#financeiro','#mapa','#editar-perfil','#configuracoes','#chat','#chat-detail','#professional-home','#client-home'].some(h => currentHash.startsWith(h));
+                if (isOverlay) {
+                    showScreen('home'); // Define a base
+                }
+            }
+            updateUserUI();
+        } else {
+            // Sem sessão: só permite login/register
+            const authHashes = ['#login', '#register', '#register-prof', '#user-type-selection', '#splash', '#welcome'];
+            const isAuthRoute = authHashes.some(h => currentHash.startsWith(h));
+            
+            if (!isAuthRoute) {
+                window.location.hash = '#login';
+            }
+        }
+        handleRoute(); // Executa a rota final
+    })();
+
+    // --- Render Functions ---
+    function init() {
+        console.log("🛠️ init() started...");
+        renderCategories();
+        renderFeatured();
+        renderSearchProfessionals();
+        renderChatList();
+        setupChatSearch();
+        setupChatInput();
+        setupRealtimeMessages();
+        renderAdminStats();
+        updateUserUI();
+        // setupLongPressLogout(); // Desabilitado para evitar deslogues acidentais ao segurar a tela
+        setupAuthListeners();
+        setupFormListeners();
+        console.log("✅ base renders done.");
+
+    }
+
+    // --- Global Auth & Form Event Delegation ---
+    function setupAuthListeners() {
+        // Login Button
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('#btn-login-submit');
+            if (btn) {
+                e.preventDefault();
+                await handleLoginSubmit();
+            }
+        });
+
+        // Enter key on password
+        document.addEventListener('keydown', async (e) => {
+            if (e.target.id === 'login-password' && e.key === 'Enter') {
+                e.preventDefault();
+                await handleLoginSubmit();
+            }
+        });
+    }
+
+    function setupFormListeners() {
+        const registerForm = document.getElementById('register-form');
+        if (registerForm) {
+            registerForm.onsubmit = (e) => {
+                e.preventDefault();
+                showSuccessModal('Bem-vindo!', 'Escolha como deseja usar a plataforma.', () => {
+                    window.location.hash = '#user-type-selection';
+                });
+            };
+        }
+
+        const formClient = document.getElementById('form-client');
+        if (formClient) {
+            formClient.onsubmit = async (e) => {
+                e.preventDefault();
+                await handleClientRegister(e);
+            };
+        }
+
+        const formProf = document.getElementById('form-professional');
+        if (formProf) {
+            formProf.onsubmit = async (e) => {
+                e.preventDefault();
+                await handleProfessionalRegister(e);
+            };
+        }
+    }
+
+        // Client Photo Preview & Real-time Upload
+        const clientPhotoInput = document.getElementById('client-photo-input');
+        if (clientPhotoInput) {
+            clientPhotoInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const preview = document.getElementById('client-photo-preview');
+                    if (preview) preview.innerHTML = '<div class="loader-mini"></div>';
+                    
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        if (preview) {
+                            preview.innerHTML = `<img src="${event.target.result}" style="width:100%; height:100%; object-fit:cover; border-radius:35px;">`;
+                            localStorage.setItem('user_photo', event.target.result);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+
+                    // If user is already logged in (unlikely here but for consistency)
+                    const { data: { user } } = await supabaseClient.auth.getUser();
+                    if (user) {
+                        uploadFileToSupabase(file, user.id, 'avatars');
+                    }
+                }
+            };
+        }
+
+        const profPhotoInput = document.getElementById('prof-photo-input');
+        if (profPhotoInput) {
+            profPhotoInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const preview = document.getElementById('prof-photo-preview');
+                    if (preview) preview.innerHTML = '<div class="loader-mini"></div>';
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        if (preview) preview.innerHTML = `<img src="${ev.target.result}" style="width:100%; height:100%; object-fit:cover; border-radius:35px;">`;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+        }
+
+        const profilePhotoInput = document.getElementById('profile-photo-change-input');
+        const savePhotoBtn = document.getElementById('btn-save-profile-photo');
+        if (savePhotoBtn) savePhotoBtn.style.display = 'none'; // Não precisamos mais do botão manual
+
+        // Profile Photo Click Trigger (on both wrapper and avatar)
+        const profilePicTrigger = document.getElementById('profile-pic-trigger');
+        const userAvatarLarge = document.getElementById('user-avatar-large');
+        
+        const triggerInput = () => {
+            const input = document.getElementById('profile-photo-change-input');
+            if (input) {
+                console.log("Triggering file input click...");
+                input.click();
+            }
+        };
+
+        if (profilePicTrigger) profilePicTrigger.addEventListener('click', triggerInput);
+        if (userAvatarLarge) userAvatarLarge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerInput();
+        });
+
+        if (profilePhotoInput) {
+            profilePhotoInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const avatarEl = document.getElementById('user-avatar-large');
+                const originalContent = avatarEl ? avatarEl.innerHTML : '';
+                
+                // 1. Instant preview with loading state
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    if (avatarEl) {
+                        avatarEl.innerHTML = `
+                            <img src="${event.target.result}" style="width:100%; height:100%; object-fit:cover; border-radius:50%; opacity: 0.6;">
+                            <div class="loader-mini" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-top-color: #fff; width: 30px; height: 30px; border-width: 3px;"></div>
+                        `;
+                        avatarEl.style.background = 'transparent';
+                    }
+                };
+                reader.readAsDataURL(file);
+
+                try {
+                    const userType = localStorage.getItem('user_type');
+                    let user = null;
+
+                    if (userType === 'admin') {
+                        // Mock user for ADM
+                        user = { id: 'admin-zero' };
+                    } else {
+                        const { data } = await supabaseClient.auth.getUser();
+                        user = data ? data.user : null;
+                    }
+
+                    if (!user) throw new Error("Usuário não autenticado.");
+
+                    // Step 1: Compress image to a reasonable size (Base64)
+                    const base64Image = await new Promise((resolve, reject) => {
+                        const r = new FileReader();
+                        r.onload = (ev) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                const canvas = document.createElement('canvas');
+                                const MAX_WIDTH = 400; 
+                                let width = img.width;
+                                let height = img.height;
+                                if (width > MAX_WIDTH) {
+                                    height = Math.round((height * MAX_WIDTH) / width);
+                                    width = MAX_WIDTH;
+                                }
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, width, height);
+                                resolve(canvas.toDataURL('image/jpeg', 0.7));
+                            };
+                            img.src = ev.target.result;
+                        };
+                        r.readAsDataURL(file);
+                    });
+
+                    let finalUrl = base64Image;
+
+                    // Skip Supabase calls for ADM
+                    if (userType !== 'admin') {
+                        // Step 2: Attempt Storage upload (Best Practice)
+                        try {
+                            const res = await fetch(base64Image);
+                            const blob = await res.blob();
+                            const fileToUpload = new File([blob], `avatar_${user.id}.jpg`, { type: 'image/jpeg' });
+                            const uploadedUrl = await uploadFileToSupabase(fileToUpload, user.id, 'avatars');
+                            if (uploadedUrl) finalUrl = uploadedUrl;
+                        } catch (storageErr) {
+                            console.warn("Storage upload failed, using Base64:", storageErr);
+                        }
+
+                        // Step 3: Update Database Profile
+                        const { error } = await supabaseClient
+                            .from('profiles')
+                            .update({ avatar_url: finalUrl })
+                            .eq('id', user.id);
+
+                        if (error) console.error("Database update error:", error);
+                    }
+
+                    // Step 4: Update Local State and UI
+                    localStorage.setItem('user_photo', finalUrl);
+                    updateUserUI(); 
+                    
+                    showSuccessModal('Sucesso!', 'Sua foto de perfil foi atualizada e salva.');
+
+                } catch (err) {
+                    console.error("Critical error saving photo:", err);
+                    alert("Erro ao salvar a foto: " + err.message);
+                    if (avatarEl) avatarEl.innerHTML = originalContent;
+                }
+            };
+        }
+
+        // --- Helper: Upload File to Supabase ---
+        async function uploadFileToSupabase(file, userId, bucket) {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${userId}/${Date.now()}.${fileExt}`;
+            
+            const { error: uploadError } = await supabaseClient.storage
+                .from(bucket)
+                .upload(fileName, file, { upsert: true });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabaseClient.storage
+                .from(bucket)
+                .getPublicUrl(fileName);
+                
+            return publicUrl;
+        }
+
+        const formProf = document.getElementById('form-professional');
+        if (formProf) {
+            formProf.onsubmit = async (e) => {
+                e.preventDefault();
+                const profileData = {
+                    full_name: document.getElementById('prof-name').value,
+                    email: document.getElementById('prof-email').value,
+                    user_type: 'professional'
+                };
+
+                const { error } = await supabaseClient.from('profiles').upsert([profileData]);
+
+                if (!error) {
+                    localStorage.setItem('user_type', 'professional');
+                    localStorage.setItem('user_name', profileData.full_name);
+                    showSuccessModal('Sucesso!', 'Perfil profissional configurado.', () => {
+                        window.location.hash = '#home';
+                        updateUserUI();
+                    });
+                } else {
+                    alert('Erro: ' + error.message);
+                }
+            };
+        }
+
+        const btnAgendar = document.getElementById('btn-agendar');
+        if (btnAgendar) btnAgendar.onclick = () => window.location.hash = '#agendamento';
+
+        const btnConfirmAgendamento = document.getElementById('btn-confirm-agendamento');
+        if (btnConfirmAgendamento) {
+            btnConfirmAgendamento.onclick = async () => {
+                const dateInput = document.getElementById('agendamento-data');
+                const timeSelect = document.getElementById('agendamento-hora');
+                
+                if (!dateInput || !dateInput.value) return alert("Selecione uma data.");
+                if (!timeSelect || !timeSelect.value) return alert("Selecione um horário.");
+
+                const selectedDate = dateInput.value;
+                const slotTime = timeSelect.value;
+                const profId = localStorage.getItem('selected_prof_id') || 'global';
+                const profName = localStorage.getItem('selected_prof_name') || 'Profissional';
+                
+                // Formatar data de YYYY-MM-DD para DD/MM/YYYY
+                const [year, month, day] = selectedDate.split('-');
+                const formattedDate = `${day}/${month}/${year}`;
+
+                if (isSlotConflicted(slotTime, formattedDate, profId)) return alert("Este profissional já possui um agendamento para este horário (conflito de 30 min)!");
+
+                await addPointsToUser(localStorage.getItem('user_type') || 'client', 25);
+                
+                const appointments = JSON.parse(localStorage.getItem('user_appointments') || '[]');
+                appointments.push({ 
+                    time: slotTime, 
+                    date: formattedDate, 
+                    prof: profName,
+                    profId: profId 
+                });
+                localStorage.setItem('user_appointments', JSON.stringify(appointments));
+
+                showSuccessModal('Agendado!', 'Seu horário está garantido.', () => {
+                    // Update the list immediately
+                    if (typeof renderAgendamentosList === 'function') renderAgendamentosList();
+                    updateUserUI();
+                    window.location.hash = '#home';
+                });
+            };
+        }
+
+        renderTimeSlots();
+        setupFinanceListeners();
+        setupEditProfileListener();
+        
+        if (typeof renderAgendamentosList === 'function') renderAgendamentosList();
+    }
+
+    window.renderAgendamentosList = function() {
+        const container = document.getElementById('agendamentos-list');
+        if (!container) return;
+        const apps = JSON.parse(localStorage.getItem('user_appointments') || '[]');
+        if (apps.length === 0) {
+            container.innerHTML = '<p style="color: #666; font-size: 0.9rem; text-align: center; margin: 1rem 0;">Você ainda não tem nenhum agendamento.</p>';
+            return;
+        }
+        
+        container.innerHTML = apps.map(a => `
+            <div style="background:#1a1a1a; padding:1rem; border-radius:12px; display:flex; justify-content:space-between; align-items:center; border:1px solid #333;">
+                <div><div style="font-weight:700; color:#fff;">${a.prof || 'Profissional'}</div><div style="font-size:0.75rem; color:#888;">${a.date}</div></div>
+                <div style="font-weight:800; color:#10B981; font-size: 1.1rem;">${a.time}</div>
+            </div>
+        `).join('');
+    };
+
+    function populateEditForm() {
+        document.getElementById('edit-user-name').value = localStorage.getItem('user_name') || '';
+        document.getElementById('edit-user-city').value = localStorage.getItem('user_city') || '';
+        document.getElementById('edit-user-address').value = localStorage.getItem('user_address') || '';
+        document.getElementById('edit-user-number').value = localStorage.getItem('user_number') || '';
+    }
+
+    function setupEditProfileListener() {
+        const form = document.getElementById('edit-profile-form');
+        if (!form) return;
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = form.querySelector('button[type="submit"]');
+            if (!btn || btn.disabled) return;
+
+            const originalText = btn.innerText;
+            btn.innerText = "Salvando...";
+            btn.disabled = true;
+
+            const name = document.getElementById('edit-user-name').value;
+            const city = document.getElementById('edit-user-city').value;
+            const address = document.getElementById('edit-user-address').value;
+            const number = document.getElementById('edit-user-number').value;
+
+            // Função interna para salvar localmente (sempre funciona)
+            const saveLocal = () => {
+                localStorage.setItem('user_name', name);
+                localStorage.setItem('user_city', city);
+                localStorage.setItem('user_address', address);
+                localStorage.setItem('user_number', number);
+                updateUserUI();
+            };
+
+            try {
+                // Tenta salvar no Supabase com um limite de tempo (timeout)
+                const savePromise = (async () => {
+                    const { data: { user } } = await supabaseClient.auth.getUser();
+                    if (user) {
+                        return await supabaseClient
+                            .from('profiles')
+                            .update({ 
+                                full_name: name, 
+                                city: city, 
+                                address: address,
+                                house_number: number
+                            })
+                            .eq('id', user.id);
+                    }
+                    return { error: null }; // Se não logado, ignora erro
+                })();
+
+                // Se o servidor demorar mais de 4 segundos, prosseguimos com o local
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error("timeout")), 4000)
+                );
+
+                try {
+                    const result = await Promise.race([savePromise, timeoutPromise]);
+                    if (result && result.error) {
+                        // Se der erro de coluna (house_number), tenta o fallback
+                        await supabaseClient
+                            .from('profiles')
+                            .update({ 
+                                full_name: name, 
+                                city: city, 
+                                address: `${address}${number ? ', ' + number : ''}`
+                            })
+                            .eq('id', user.id);
+                    }
+                } catch (pErr) {
+                    console.warn("Salvamento remoto ignorado (timeout ou erro), prosseguindo com local.");
+                }
+
+                saveLocal();
+                
+                // Redirecionamento imediato para evitar "trava" visual
+                showSuccessModal('Sucesso!', 'Perfil atualizado.', () => {
+                    window.location.hash = '#home';
+                });
+
+            } catch (err) {
+                console.error("Erro crítico no formulário:", err);
+                // Se tudo der errado, salva local e avisa
+                saveLocal();
+                alert("Perfil salvo localmente (Erro na nuvem: " + err.message + ")");
+                window.location.hash = '#home';
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        };
+    }
+
+    // --- Core UI Update ---
+    function updateUserUI() {
+        const type = localStorage.getItem('user_type') || 'client';
+        const name = localStorage.getItem('user_name') || 'Usuário';
+        
+        // Header
+        const homeName = document.getElementById('home-user-name');
+        if (homeName) homeName.innerText = name;
+
+        const typeBadge = document.getElementById('user-type-badge');
+        if (typeBadge) {
+            typeBadge.innerText = type === 'professional' ? 'Profissional' : 'Cliente';
+            typeBadge.style.background = type === 'professional' ? '#fff' : '#222';
+            typeBadge.style.color = type === 'professional' ? '#000' : '#fff';
+        }
+
+        // Screens visibility
+        const clientDash = document.getElementById('client-dashboard');
+        const profDash = document.getElementById('professional-dashboard');
+        
+        if (type === 'admin') {
+            if (clientDash) clientDash.style.display = 'block';
+            if (profDash) profDash.style.display = 'block';
+        } else {
+            if (clientDash) clientDash.style.display = type === 'client' ? 'block' : 'none';
+            if (profDash) profDash.style.display = type === 'professional' ? 'block' : 'none';
+        }
+
+        // Profile Page
+        const profileName = document.getElementById('user-name-display');
+        const profileEmail = document.getElementById('user-email-display');
+        const profileAvatar = document.getElementById('user-avatar-large');
+        const navProfileIcon = document.getElementById('nav-profile-icon');
+        const email = localStorage.getItem('user_email') || 'email@email.com';
+        const photo = localStorage.getItem('user_photo');
+
+        if (profileName) profileName.innerText = name;
+        if (profileEmail) profileEmail.innerText = email;
+
+        // Shared Logic for Avatar
+        const updateAvatar = (el, size) => {
+            if (!el) return;
+            el.style.display = 'flex';
+            el.style.alignItems = 'center';
+            el.style.justifyContent = 'center';
+            el.style.overflow = 'hidden';
+            el.style.borderRadius = '50%';
+            
+            if (photo && photo !== '') {
+                el.innerHTML = `<img src="${photo}" style="width:100%; height:100%; object-fit:cover;">`;
+                el.style.background = 'transparent';
+                el.style.border = el.id === 'nav-profile-icon' ? 'none' : '3px solid var(--border)';
+            } else {
+                const initial = (name || 'U').charAt(0).toUpperCase();
+                el.innerHTML = `<span style="font-size: ${size}; font-weight: 800; color: ${type === 'professional' ? '#fff' : '#000'}">${initial}</span>`;
+                el.style.background = type === 'professional' ? 'linear-gradient(135deg, #333, #000)' : 'linear-gradient(135deg, #eee, #999)';
+                el.style.border = el.id === 'nav-profile-icon' ? 'none' : '3px solid var(--border)';
+            }
+        };
+
+        updateAvatar(profileAvatar, '3rem');
+        
+        if (navProfileIcon) {
+            navProfileIcon.style.display = 'flex';
+            updateAvatar(navProfileIcon, '1.2rem');
+        }
+
+        // Additional Info
+        const locationEl = document.getElementById('user-location-display');
+        const addressEl = document.getElementById('user-address-display');
+        const userTypeDisplay = document.getElementById('user-type-display');
+        
+        if (locationEl) locationEl.innerText = localStorage.getItem('user_city') || 'Não informado';
+        
+        const addr = localStorage.getItem('user_address');
+        const num = localStorage.getItem('user_number');
+        if (addressEl) {
+            addressEl.innerText = addr ? `${addr}${num ? ', ' + num : ''}` : 'Não informado';
+        }
+
+        if (userTypeDisplay) {
+            userTypeDisplay.innerText = type === 'professional' ? 'Profissional' : 'Cliente';
+        }
+        
+        const pointsContainer = document.getElementById('points-info-container');
+        const pointsInlineEl = document.getElementById('user-points-inline-display');
+        if (pointsContainer && pointsInlineEl) {
+            const points = localStorage.getItem('user_points') || '10';
+            pointsInlineEl.innerText = `${points} Pontos`;
+            pointsContainer.style.display = 'flex';
+            
+            // Set current plan text
+            const planEl = document.getElementById('user-plan-display');
+            if (planEl) {
+                const currentPlan = localStorage.getItem('user_subscription_plan') || 'Plano Comum';
+                planEl.innerText = currentPlan;
+            }
+
+            // Change "Planos" button to "Pontos" for ADM
+            const plansBtn = document.querySelector('button[onclick="showOverlay(\'plans-selection\')"]');
+            if (plansBtn) {
+                plansBtn.innerText = type === 'admin' ? 'Pontos' : 'Planos';
+            }
+        }
+    }
+
+    function renderDashboardCliente() {
+        renderClientHomeAgenda();
+        renderHomeSpending();
+        renderHomeRanking();
+        updateHomePoints();
+        // Also call these if they still have relevant parts of the UI
+        renderClientAgenda();
+        renderSpendingChart();
+        renderProLocationStats();
+    }
+
+    function renderClientHomeAgenda() {
+        const container = document.getElementById('client-home-agenda');
+        if (!container) return;
+        const apps = JSON.parse(localStorage.getItem('user_appointments') || '[]');
+        if (apps.length === 0) {
+            container.innerHTML = '<p class="empty-state">Nenhum horário marcado.</p>';
+            return;
+        }
+        container.innerHTML = apps.map(a => `
+            <div style="background:#1a1a1a; padding:1rem; border-radius:12px; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center; border:1px solid #333;">
+                <div><div style="font-weight:700;">Agendamento</div><div style="font-size:0.7rem; color:#666;">${a.date}</div></div>
+                <div style="font-weight:800; color:#fff;">${a.time}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderHomeSpending() {
+        const spendingVal = document.getElementById('home-client-spending');
+        const progress = document.getElementById('home-spending-progress');
+        if (!spendingVal || !progress) return;
+        
+        // Mock data for demo
+        const total = 450.00;
+        spendingVal.innerText = `R$ ${total.toFixed(2)}`;
+        progress.style.width = '45%';
+    }
+
+    function renderHomeRanking() {
+        // Chama o ranking real do banco de dados
+        renderRanking();
+    }
+
+    function updateHomePoints() {
+        const el = document.getElementById('home-client-points');
+        if (!el) return;
+        const points = localStorage.getItem('user_points') || '10';
+        el.innerText = `${points} Pontos`;
+    }
+
+    function updatePointsDisplay() {
+        const type = localStorage.getItem('user_type');
+        const points = localStorage.getItem(`user_points_${type}`) || 0;
+        ['user-points-val', 'prof-points-display', 'client-points-display'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = points;
+        });
+    }
+
+    async function addPointsToUser(type, points) {
+        const key = `user_points_${type}`;
+        const current = parseInt(localStorage.getItem(key) || 0);
+        localStorage.setItem(key, current + points);
+        updatePointsDisplay();
+    }
+
+    // --- Dashboard Renders ---
+    function renderDashboardProfissional() {
+        renderProfAgenda();
+        renderFinanceChart();
+        renderRanking('professional');
+        renderClientLocationStats();
+    }
+
+
+    function renderProfAgenda() {
+        const container = document.getElementById('prof-agenda-list');
+        if (!container) return;
+        container.innerHTML = `
+            <div style="background: #111; padding: 1rem; border-radius: 12px; border: 1px solid #222; display: flex; justify-content: space-between; align-items: center;">
+                <div><div style="font-weight:700;">João Silva</div><div style="font-size:0.8rem; color:#888;">Corte Social</div></div>
+                <div style="text-align:right;"><div style="font-weight:800;">14:30</div><div style="font-size:0.7rem; color:#666;">Hoje</div></div>
+            </div>
+            <div style="background: #111; padding: 1rem; border-radius: 12px; border: 1px solid #222; display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem;">
+                <div><div style="font-weight:700;">Maria Santos</div><div style="font-size:0.8rem; color:#888;">Manicure</div></div>
+                <div style="text-align:right;"><div style="font-weight:800;">16:00</div><div style="font-size:0.7rem; color:#666;">Amanhã</div></div>
+            </div>
+        `;
+    }
+
+    function renderClientAgenda() {
+        const container = document.getElementById('client-agenda-list');
+        if (!container) return;
+        const apps = JSON.parse(localStorage.getItem('user_appointments') || '[]');
+        if (apps.length === 0) {
+            container.innerHTML = '<p style="color:#555; text-align:center; padding: 2rem;">Nenhum agendamento ativo.</p>';
+            return;
+        }
+        container.innerHTML = apps.map(a => `
+            <div style="background:#111; padding:1rem; border-radius:12px; border:1px solid #222; margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items: center;">
+                <div><div style="font-weight:700;">${a.prof}</div><div style="font-size:0.8rem; color:#888;">Serviço Contratado</div></div>
+                <div style="text-align:right;"><div style="font-weight:800; color:#fff;">${a.time}</div><div style="font-size:0.7rem; color:#444;">${a.date}</div></div>
+            </div>
+        `).join('');
+    }
+
+    async function renderFinanceChart() {
+        try {
+            const { data } = await supabaseClient.from('finance_records').select('revenue, cost');
+            let rev = 0, cost = 0;
+            if (data) data.forEach(d => { rev += (d.revenue || 0); cost += (d.cost || 0); });
+            const max = Math.max(rev, cost, 100);
+            const revBar = document.getElementById('chart-rev-bar');
+            const costBar = document.getElementById('chart-cost-bar');
+            if (revBar) revBar.style.width = `${(rev/max)*100}%`;
+            if (costBar) costBar.style.width = `${(cost/max)*100}%`;
+            const revVal = document.getElementById('chart-rev-val');
+            const costVal = document.getElementById('chart-cost-val');
+            if (revVal) revVal.innerText = `R$ ${rev.toFixed(2)}`;
+            if (costVal) costVal.innerText = `R$ ${cost.toFixed(2)}`;
+        } catch(e) {}
+    }
+
+    async function renderSpendingChart() {
+        try {
+            const { data } = await supabaseClient.from('finance_records').select('cost');
+            let total = 0;
+            if (data) data.forEach(d => total += (d.cost || 0));
+            const spendingVal = document.getElementById('client-spending-val');
+            const spendingBar = document.getElementById('client-spending-bar');
+            if (spendingVal) spendingVal.innerText = `R$ ${total.toFixed(2)}`;
+            if (spendingBar) spendingBar.style.width = `${Math.min((total/2000)*100, 100)}%`;
+        } catch(e) {}
+    }
+
+    async function renderRanking() {
+        const container = document.getElementById('home-client-ranking');
+        if (!container) return;
+
+        container.innerHTML = '<p style="color:#555; font-size:0.8rem; padding:0.5rem;">Carregando ranking...</p>';
+
+        try {
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .select('full_name, points, avatar_url')
+                .order('points', { ascending: false })
+                .limit(3);
+
+            if (error) {
+                if (error.message && error.message.includes('does not exist')) {
+                    container.innerHTML = '<p style="color:#555; font-size:0.75rem; padding:0.5rem; text-align:center;">⚙️ Coluna <strong>points</strong> ainda não criada no banco.<br>Crie via Supabase Dashboard.</p>';
+                } else {
+                    container.innerHTML = '<p style="color:#555; font-size:0.8rem; padding:0.5rem;">Erro ao carregar ranking.</p>';
+                }
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<p style="color:#555; font-size:0.8rem; padding:0.5rem;">Nenhum usuário no ranking ainda.</p>';
+                return;
+            }
+
+            const medals = ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'];
+
+            container.innerHTML = data.map((u, i) => {
+                const avatarHtml = u.avatar_url
+                    ? `<img src="${u.avatar_url}" style="width:44px; height:44px; object-fit:cover; border-radius:50%; border:1px solid #333;">`
+                    : `<div style="width:44px; height:44px; background:#111; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.1rem; border:1px solid #222;">${(u.full_name || '?')[0].toUpperCase()}</div>`;
+                return `
+                <div style="display:flex; align-items:center; gap:1rem; padding:1rem; border-bottom:${i < data.length - 1 ? '1px solid #222' : 'none'};">
+                    <div style="font-size:1.3rem; width:24px; text-align:center;">${medals[i] || (i+1)}</div>
+                    ${avatarHtml}
+                    <div style="flex:1;">
+                        <div style="font-weight:700; font-size:0.95rem;">${u.full_name || 'Anônimo'}</div>
+                        <div style="font-size:0.75rem; color:#666; font-weight:600;">${u.points ?? 10} Pontos</div>
+                    </div>
+                    ${i === 0 ? '<span style="font-size:1.2rem;">\ud83d\udc51</span>' : ''}
+                </div>`;
+            }).join('');
+
+        } catch (err) {
+            console.error('Erro ao buscar ranking:', err);
+            container.innerHTML = '<p style="color:#555; font-size:0.8rem; padding:0.5rem;">Erro ao carregar ranking.</p>';
+        }
+    }
+
+    function renderClientLocationStats() {
+        const container = document.getElementById('client-location-stats');
+        if (!container) return;
+        const locations = [
+            { city: 'São Paulo', count: 142 },
+            { city: 'Santo André', count: 58 },
+            { city: 'SBC', count: 45 }
+        ];
+        container.innerHTML = locations.map(loc => `
+            <div style="background:#1a1a1a; padding:8px 14px; border-radius:10px; border:1px solid #333; font-size:0.75rem; font-weight: 600;">
+                <span style="color:#fff;">${loc.city}:</span> <span style="color:#888;">${loc.count}</span>
+            </div>
+        `).join('');
+    }
+
+    function renderProLocationStats() {
+        const container = document.getElementById('prof-location-stats');
+        if (!container) return;
+        const locations = [
+            { cat: 'Beleza', count: 24 },
+            { cat: 'Reformas', count: 18 },
+            { cat: 'Saúde', count: 12 }
+        ];
+        container.innerHTML = locations.map(loc => `
+            <div style="background:#1a1a1a; padding:8px 14px; border-radius:10px; border:1px solid #333; font-size:0.75rem; font-weight: 600;">
+                <span style="color:#fff;">${loc.cat}:</span> <span style="color:#888;">${loc.count} pros</span>
+            </div>
+        `).join('');
+    }
+
+    function renderCatalogo() {
+        const container = document.getElementById('catalogo-items');
+        const planDisplay = document.getElementById('catalogo-current-plan');
+        const addBtn = document.getElementById('btn-add-service');
+        const limitMsg = document.getElementById('catalogo-limit-msg');
+        
+        if (!container) return;
+
+        const plan = localStorage.getItem('user_subscription_plan') || 'Plano Comum';
+        if (planDisplay) planDisplay.innerText = plan;
+
+        // Limite de 3 para Comum, 5 para Plus
+        const limit = (plan === 'Plano Plus' || plan === 'ADM') ? 5 : 3;
+
+        // Mock de serviços do usuário logado (normalmente viria do banco)
+        const services = [
+            { name: 'Corte Social', price: '45,00' },
+            { name: 'Barba Completa', price: '30,00' },
+            { name: 'Corte + Barba', price: '70,00' }
+        ];
+
+        container.innerHTML = services.map(s => `
+            <div style="background:#111; padding:1.25rem; border-radius:16px; border:1px solid #222; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 700; color: #fff;">${s.name}</div>
+                    <div style="font-size: 0.8rem; color: #4ade80; font-weight: 800; margin-top: 2px;">R$ ${s.price}</div>
+                </div>
+                <button style="background: none; border: none; color: #444; font-size: 1.1rem;">✏️</button>
+            </div>
+        `).join('');
+
+        // Gerenciar Botão de Adicionar
+        if (services.length >= limit) {
+            if (addBtn) {
+                addBtn.disabled = true;
+                addBtn.style.opacity = '0.3';
+                addBtn.style.filter = 'grayscale(1)';
+            }
+            if (limitMsg) limitMsg.style.display = 'block';
+        } else {
+            if (addBtn) {
+                addBtn.disabled = false;
+                addBtn.style.opacity = '1';
+                addBtn.style.filter = 'none';
+            }
+            if (limitMsg) limitMsg.style.display = 'none';
+        }
+    }
+
+    function renderMapaRede() {
+        const addr = document.getElementById('map-address-val');
+        if (addr) addr.innerText = localStorage.getItem('user_address') || 'Endereço não definido';
+        
+        const container = document.getElementById('map-markers-container');
+        if (!container) {
+            const mockContent = document.getElementById('map-mock');
+            if (mockContent) {
+                const markerList = document.createElement('div');
+                markerList.id = 'map-markers-container';
+                markerList.style.width = '100%';
+                markerList.style.padding = '1.5rem';
+                markerList.style.marginTop = 'auto';
+                mockContent.appendChild(markerList);
+            }
+        }
+        
+        const markers = [
+            { name: 'Sua Localização', loc: '0km (Referência)' },
+            { name: 'Studio Zero', loc: '0.8km' },
+            { name: 'Oficina Central', loc: '1.2km' }
+        ];
+        const target = document.getElementById('map-markers-container');
+        if (target) {
+            target.innerHTML = markers.map(m => `
+                <div style="background: rgba(255,255,255,0.03); padding: 1.25rem; border-radius: 16px; margin-bottom: 0.75rem; display: flex; justify-content: space-between; border: 1px solid rgba(255,255,255,0.05);">
+                    <span style="font-weight: 600;">📍 ${m.name}</span>
+                    <span style="color: #666; font-size: 0.8rem;">${m.loc}</span>
+                </div>
+            `).join('');
+        }
+    }
+
+    // --- Home Renders (Public Profiles) ---
+    window.renderProfessionalHome = async function(id) {
+        const container = document.getElementById('professional-home-content');
+        if (!container) return;
+        container.innerHTML = '<div class="loader-mini" style="margin: 50% auto;"></div>';
+
+        try {
+            let prof;
+            if (id.startsWith('prof-')) {
+                prof = DATA.professionals.find(p => p.id === id);
+            } else {
+                const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', id).single();
+                if (error) throw error;
+                prof = data;
+            }
+
+            if (!prof) throw new Error("Profissional não encontrado");
+
+            const avatarHtml = prof.avatar_url 
+                ? `<img src="${prof.avatar_url}" style="width:130px; height:130px; object-fit:cover; border-radius:35px; border: 4px solid var(--bg);">`
+                : `<div style="width:130px; height:130px; background:linear-gradient(135deg, #a855f7, #6b21a8); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:3rem; border-radius:35px; border: 4px solid var(--bg);">${(prof.full_name || 'P')[0].toUpperCase()}</div>`;
+
+            const servicesHtml = (prof.services || []).map(s => `
+                <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
+                        <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
+                        <div style="color: #555; font-size: 0.7rem; font-weight: 700; margin-top: 4px;">🕒 ${s.duration || 30} min</div>
+                    </div>
+                    <div style="color: #10B981; font-weight: 900; font-size: 1rem;">R$ ${s.price}</div>
+                </div>
+            `).join('');
+
+            container.innerHTML = `
+                <div class="prof-cover" style="height: 220px; background: #000; position: relative; overflow: hidden;">
+                    <img src="${prof.cover_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=800'}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.6;">
+                    <div style="position: absolute; inset: 0; background: linear-gradient(to bottom, transparent, #000);"></div>
+                </div>
+                <div style="padding: 0 1.5rem; margin-top: -65px; position: relative; text-align: center;">
+                    <div style="display: inline-block; position: relative;">
+                        ${avatarHtml}
+                        <div style="position: absolute; bottom: 10px; right: 10px; background: #10B981; width: 25px; height: 25px; border-radius: 50%; border: 3px solid var(--bg);"></div>
+                    </div>
+                    <h2 style="margin-top: 1rem; font-size: 1.75rem; font-weight: 900; color: #fff;">${prof.full_name || 'Profissional'}</h2>
+                    <p style="color: var(--primary-accent); font-weight: 800; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1.5px; margin-top: 4px;">${prof.category || 'Especialista'}</p>
+                    
+                    <div style="display: flex; justify-content: center; gap: 1.5rem; margin-top: 2rem;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">★ ${prof.rating || '5.0'}</div>
+                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Rating</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${prof.reviews || 0}</div>
+                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Reviews</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${prof.points || 0}</div>
+                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Pontos</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2.5rem; text-align: left;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">SOBRE</h4>
+                        <p style="color: #888; font-size: 0.9rem; line-height: 1.6;">${prof.bio || 'Profissional qualificado da comunidade Zero, focado em entregar a melhor experiência.'}</p>
+                    </div>
+
+                    <div style="margin-top: 2.5rem; text-align: left;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1.25rem; letter-spacing: 1px;">CATÁLOGO DE SERVIÇOS</h4>
+                        ${servicesHtml || '<p style="color:#444; font-size:0.8rem;">Nenhum serviço cadastrado.</p>'}
+                    </div>
+
+                    <div style="margin-top: 2rem; text-align: left; padding-bottom: 150px;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO</h4>
+                        <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; display: flex; align-items: center; gap: 1rem;">
+                            <div style="font-size: 1.5rem;">📍</div>
+                            <div>
+                                <div style="font-weight: 800; color: #fff; font-size: 0.9rem;">${prof.city || 'Cidade não informada'}</div>
+                                <div style="color: #555; font-size: 0.75rem; font-weight: 600;">${prof.address || 'Endereço disponível após agendamento'}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Action listeners
+            document.getElementById('btn-prof-home-schedule').onclick = () => {
+            const scheduleBtn = document.getElementById('btn-prof-home-schedule');
+            if (scheduleBtn) {
+                scheduleBtn.onclick = () => {
+                    localStorage.setItem('selected_prof_id', prof.id);
+                    localStorage.setItem('selected_prof_name', prof.full_name || 'Profissional');
+                    hideOverlay('professional-home');
+                    window.location.hash = '#agendamento';
+                };
+            }
+
+            const chatBtn = document.getElementById('btn-prof-home-chat');
+            if (chatBtn) {
+                chatBtn.onclick = () => {
+                    hideOverlay('professional-home');
+                    window.location.hash = `#chat-msg/${prof.id}`;
+                };
+            }
+
+        } catch (err) {
+            console.error("Erro ao carregar home do profissional:", err);
+            container.innerHTML = `<p style="color:#ff4d4d; text-align:center; padding:2rem;">Erro ao carregar perfil: ${err.message}</p>`;
+        }
+    };
+
+    window.renderClientHome = async function(id) {
+        const container = document.getElementById('client-home-content');
+        if (!container) return;
+        container.innerHTML = '<div class="loader-mini" style="margin: 50% auto;"></div>';
+
+        try {
+            let client;
+            if (id.startsWith('client-')) {
+                client = DATA.clients.find(c => c.id === id);
+            } else {
+                const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', id).single();
+                if (error) throw error;
+                client = data;
+            }
+
+            if (!client) throw new Error("Cliente não encontrado");
+
+            const avatarHtml = client.avatar_url 
+                ? `<img src="${client.avatar_url}" style="width:130px; height:130px; object-fit:cover; border-radius:50%; border: 4px solid var(--bg);">`
+                : `<div style="width:130px; height:130px; background:linear-gradient(135deg, #444, #111); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:3rem; border-radius:50%; border: 4px solid var(--bg);">${(client.full_name || 'C')[0].toUpperCase()}</div>`;
+
+            container.innerHTML = `
+                <div class="client-cover" style="height: 180px; background: #000; position: relative; overflow: hidden;">
+                    <img src="${client.cover_url || 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=800'}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.4;">
+                    <div style="position: absolute; inset: 0; background: linear-gradient(to bottom, transparent, #000);"></div>
+                </div>
+                <div style="padding: 0 1.5rem; margin-top: -65px; position: relative; text-align: center;">
+                    ${avatarHtml}
+                    <h2 style="margin-top: 1rem; font-size: 1.75rem; font-weight: 900; color: #fff;">${client.full_name || 'Cliente'}</h2>
+                    <p style="color: #555; font-weight: 700; font-size: 0.85rem; margin-top: 4px;">Membro da Comunidade</p>
+                    
+                    <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 2rem;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${client.points || 0}</div>
+                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Pontos</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">12</div>
+                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Conexões</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2.5rem; text-align: left;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">BIO</h4>
+                        <p style="color: #888; font-size: 0.9rem; line-height: 1.6;">${client.bio || 'Membro ativo da nossa comunidade regional.'}</p>
+                    </div>
+
+                    <div style="margin-top: 2.5rem; text-align: left;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO</h4>
+                        <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; display: flex; align-items: center; gap: 1rem;">
+                            <div style="font-size: 1.5rem;">📍</div>
+                            <div>
+                                <div style="font-weight: 800; color: #fff; font-size: 0.9rem;">${client.city || 'Cidade não informada'}</div>
+                                <div style="color: #555; font-size: 0.75rem; font-weight: 600;">Residente local</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2rem; text-align: left; padding-bottom: 150px;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">INTERESSES</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                            <span style="background: #1a1a1a; padding: 6px 12px; border-radius: 10px; font-size: 0.8rem; color: #ccc; border: 1px solid #333;">Beleza</span>
+                            <span style="background: #1a1a1a; padding: 6px 12px; border-radius: 10px; font-size: 0.8rem; color: #ccc; border: 1px solid #333;">Barbearia</span>
+                            <span style="background: #1a1a1a; padding: 6px 12px; border-radius: 10px; font-size: 0.8rem; color: #ccc; border: 1px solid #333;">Comunidade</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const chatBtn = document.getElementById('btn-client-home-chat');
+            if (chatBtn) {
+                chatBtn.onclick = () => {
+                    hideOverlay('client-home');
+                    window.location.hash = `#chat-msg/${client.id}`;
+                };
+            }
+        } catch (err) {
+            console.error("Erro ao carregar home do cliente:", err);
+            container.innerHTML = `<p style="color:#ff4d4d; text-align:center; padding:2rem;">Erro ao carregar perfil: ${err.message}</p>`;
+        }
+    };
+    };
+
+    // --- Detail Renders ---
+    function renderProfessionalDetail(id) {
+        const prof = DATA.professionals.find(p => p.id == id);
+        const container = document.getElementById('prof-detail-content');
+        if (!prof || !container) return;
+
+        const profReviews = DATA.reviews.filter(r => r.professionalId == id);
+
+        container.innerHTML = `
+            <div class="prof-detail-header" style="position: relative; margin: -1.5rem -1.5rem 2rem -1.5rem; overflow: hidden;">
+                <div class="prof-cover" style="height: 220px; background: url('${prof.coverImage || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=800'}');">
+                    <div style="position: absolute; inset: 0; background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.9));"></div>
+                </div>
+                
+                <div class="prof-profile-section" style="position: relative; margin-top: -80px; text-align: center; padding: 0 1.5rem;">
+                    <div class="avatar-circle premium" style="width: 130px; height: 130px; font-size: 3.5rem; margin: 0 auto 1.25rem; background: ${prof.avatarColor}; position: relative; border-radius: 35px;">
+                        ${prof.avatar}
+                        <div style="position: absolute; bottom: 8px; right: 8px; background: #4ade80; width: 28px; height: 28px; border-radius: 50%; border: 4px solid var(--bg); display: ${prof.verified ? 'block' : 'none'};"></div>
+                    </div>
+                    <h2 style="font-size: 2.2rem; font-weight: 900; color: #fff; letter-spacing: -1px; line-height: 1;">${prof.name}</h2>
+                    <p style="color: var(--primary-accent); font-weight: 800; font-size: 0.9rem; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px;">${prof.specialty}</p>
+                    
+                    <div style="display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">★ ${prof.rating}</div>
+                            <div style="font-size: 0.65rem; color: #555; font-weight: 800; text-transform: uppercase; margin-top: 2px;">Rating</div>
+                        </div>
+                        <div style="width: 1px; background: #222;"></div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${prof.reviews}</div>
+                            <div style="font-size: 0.65rem; color: #555; font-weight: 800; text-transform: uppercase; margin-top: 2px;">Reviews</div>
+                        </div>
+                        <div style="width: 1px; background: #222;"></div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${prof.distance}</div>
+                            <div style="font-size: 0.65rem; color: #555; font-weight: 800; text-transform: uppercase; margin-top: 2px;">Distância</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="prof-detail-body" style="padding-bottom: 6rem;">
+                <div class="section" style="margin-bottom: 3rem;">
+                    <h4 style="margin-bottom: 1.25rem; font-size: 1.1rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">Sobre</h4>
+                    <p style="color: #888; font-size: 1rem; line-height: 1.8; font-weight: 500;">${prof.bio}</p>
+                </div>
+
+                <div class="section" style="margin-bottom: 3rem;">
+                    <h4 style="margin-bottom: 1.75rem; font-size: 1.1rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">Serviços em Destaque</h4>
+                    ${prof.services.map(s => `
+                        <div class="card" style="margin-bottom: 1.25rem; background: #111; border: 1px solid #222; padding: 1.5rem; border-radius: 24px;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 800; color: #fff; font-size: 1.15rem; letter-spacing: -0.3px;">${s.name}</div>
+                                    <div style="font-size: 0.85rem; color: #555; margin-top: 6px; line-height: 1.5; font-weight: 500;">${s.description}</div>
+                                    <div style="display: flex; gap: 15px; margin-top: 12px;">
+                                        <div style="font-size: 0.75rem; color: #444; font-weight: 800; background: #1a1a1a; padding: 4px 10px; border-radius: 8px;">🕒 ${s.duration} MIN</div>
+                                        <div style="font-size: 0.75rem; color: #444; font-weight: 800; background: #1a1a1a; padding: 4px 10px; border-radius: 8px;">✨ PREMIUM</div>
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="color: #fff; font-weight: 900; font-size: 1.2rem;">R$ ${s.price}</div>
+                                    <button class="btn btn-sm" style="margin-top: 15px; background: var(--primary-accent); color: #fff; font-weight: 900; padding: 8px 16px; border-radius: 12px; font-size: 0.8rem; box-shadow: 0 5px 15px rgba(37, 99, 235, 0.2);" onclick="location.hash='#agendar/${prof.id}/${s.id}'">AGENDAR</button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- Gallery Section -->
+                <div class="section" style="margin-bottom: 3rem;">
+                    <h4 style="margin-bottom: 1.75rem; font-size: 1.1rem; font-weight: 900; color: #fff; letter-spacing: -0.5px;">Portfólio</h4>
+                    <div class="gallery-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                        ${(prof.gallery || []).map(img => `
+                            <div style="aspect-ratio: 1; border-radius: 20px; overflow: hidden; background: #111; border: 1px solid #222;">
+                                <img src="${img}" style="width: 100%; height: 100%; object-fit: cover;">
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Reviews Section -->
+                <div class="section" style="margin-bottom: 3rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.75rem;">
+                        <h4 style="font-size: 1.1rem; font-weight: 900; color: #fff; letter-spacing: -0.5px; margin: 0;">Avaliações</h4>
+                        <span style="color: var(--primary-accent); font-size: 0.75rem; font-weight: 900; letter-spacing: 1px;">VER TODAS</span>
+                    </div>
+                    ${profReviews.length > 0 ? profReviews.map(r => `
+                        <div class="review-card" style="background: #0a0a0a; padding: 1.5rem; border-radius: 24px; border: 1px solid #1a1a1a; margin-bottom: 1.25rem;">
+                            <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
+                                <div style="width: 40px; height: 40px; background: #222; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: 900; color: #fff;">${r.authorAvatar}</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${r.author}</div>
+                                    <div style="color: #f59e0b; font-size: 0.7rem; letter-spacing: 2px;">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div>
+                                </div>
+                                <span style="font-size: 0.75rem; color: #444; font-weight: 800; text-transform: uppercase;">${r.date}</span>
+                            </div>
+                            <p style="color: #777; font-size: 0.95rem; line-height: 1.6; font-weight: 500; margin: 0;">${r.comment}</p>
+                        </div>
+                    `).join('') : '<p style="color: #444; text-align: center; padding: 2rem; font-weight: 700;">Ainda não há avaliações.</p>'}
+                </div>
+            </div>
+
+            <!-- Floating Action Button Area -->
+            <div class="floating-actions" style="position: fixed; bottom: 0; left: 0; width: 100%; display: flex; gap: 12px; z-index: 1000; box-shadow: 0 -10px 40px rgba(0,0,0,0.8);">
+                <button class="btn" style="flex: 1; background: #1a1a1a; color: #fff; border: 1px solid #333; font-weight: 900; height: 58px; border-radius: 20px; font-size: 0.9rem; letter-spacing: 1px;" onclick="location.hash='#chat-msg/${prof.id}'">MENSAGEM</button>
+                <button class="btn" style="flex: 2; background: #fff; color: #000; font-weight: 900; height: 58px; border-radius: 20px; font-size: 0.9rem; letter-spacing: 1px;" onclick="location.hash='#agendar/${prof.id}'">AGENDAR AGORA</button>
+            </div>
+        `;
+    }
+
+    function renderChatDetail(id) {
+        const container = document.getElementById('chat-messages-container');
+        const nameEl = document.getElementById('chat-name');
+        const avatarEl = document.getElementById('chat-avatar');
+        
+        if (!container) return;
+
+        // Special case for Support
+        if (id === 'support') {
+            nameEl.innerText = "Suporte Zero";
+            avatarEl.style.background = "linear-gradient(135deg, #a855f7, #6b21a8)";
+            avatarEl.innerText = "💎";
+            container.innerHTML = `
+                <div class="message other" style="margin-bottom: 1.25rem; display: flex; flex-direction: column; align-items: flex-start">
+                    <div style="background: #111; color: #fff; padding: 12px 18px; border-radius: 20px; border-bottom-left-radius: 4px; max-width: 85%; font-size: 0.95rem; font-weight: 500; border: 1px solid #222">
+                        Olá! Como podemos ajudar você hoje?
+                    </div>
+                    <span style="font-size: 0.7rem; color: #444; margin-top: 6px; font-weight: 700; text-transform: uppercase;">Agora</span>
+                </div>
+            `;
+            return;
+        }
+
+        let chat = DATA.conversations.find(c => c.id == id);
+        
+        if (id === 'support') {
+            nameEl.innerText = "Suporte Zero";
+            avatarEl.innerHTML = '💎';
+            avatarEl.style.background = 'linear-gradient(135deg, #a855f7, #6b21a8)';
+            chat = { id: 'support', messages: [] }; // Placeholder for UI, fetchMessages will fill it
+        } else if (!chat) {
+            // Se não está nas conversas, busca nos profissionais ou clientes
+            const person = DATA.professionals.find(p => p.id == id) || DATA.clients.find(c => c.id == id);
+            
+            if (person) {
+                chat = {
+                    id: person.id,
+                    professionalName: person.full_name || person.name,
+                    professionalAvatar: (person.full_name || person.name || 'U')[0],
+                    avatarColor: person.avatarColor || '#333',
+                    avatar_url: person.avatar_url,
+                    messages: []
+                };
+                // Register it so it's persistent and shared
+                DATA.conversations.push(chat);
+            }
+        }
+
+        if (!chat) {
+            nameEl.innerText = "Usuário";
+            container.innerHTML = '<p style="text-align:center; padding:2rem; color:#444;">Conversa não encontrada.</p>';
+            return;
+        }
+
+        nameEl.innerText = chat.professionalName || chat.name;
+        
+        if (chat.avatar_url) {
+            avatarEl.innerHTML = `<img src="${chat.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+            avatarEl.style.background = 'transparent';
+        } else {
+            avatarEl.style.background = chat.avatarColor || '#333';
+            avatarEl.innerText = chat.professionalAvatar || (chat.name || 'U')[0];
+        }
+
+        if (chat.messages.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 3rem 1rem; opacity: 0.3;">
+                    <p style="font-size: 0.85rem; font-weight: 600;">Inicie uma conversa com ${chat.professionalName || chat.name}</p>
+                </div>
+            `;
+        } else {
+            container.innerHTML = chat.messages.map(m => `
+                <div class="message ${m.sender}" style="margin-bottom: 1.25rem; display: flex; flex-direction: column; align-items: ${m.sender === 'user' ? 'flex-end' : 'flex-start'}">
+                    <div style="background: ${m.sender === 'user' ? '#ffffff' : '#111'}; color: ${m.sender === 'user' ? '#000' : '#fff'}; padding: 12px 18px; border-radius: 20px; border-bottom-${m.sender === 'user'?'right':'left'}-radius: 4px; max-width: 85%; font-size: 0.95rem; font-weight: 500; border: 1px solid ${m.sender==='user'?'#fff':'#222'}">
+                        ${m.text}
+                    </div>
+                    <span style="font-size: 0.7rem; color: #444; margin-top: 6px; font-weight: 700; text-transform: uppercase;">${m.time}</span>
+                </div>
+            `).join('');
+        }
+        
+        container.scrollTop = container.scrollHeight;
+
+        const input = document.getElementById('chat-input');
+        if (input) input.value = ''; // Fix persistence issue
+        
+        // Fetch persistent messages from Supabase
+        fetchMessages(id);
+        
+        // Store current chat ID for global send function
+        window.currentChatId = id;
+    }
+
+    async function fetchMessages(chatId) {
+        if (!supabaseClient) return;
+        
+        const container = document.getElementById('chat-messages-container');
+        if (!container) return;
+
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) return;
+
+        // Determine actual receiver ID if it's support
+        let targetId = chatId;
+        if (chatId === 'support') {
+            const { data: admin } = await supabaseClient.from('profiles').select('id').eq('full_name', 'ZeroZynapses').single();
+            if (admin) targetId = admin.id;
+            else {
+                // Fallback: search by user_type if name fails
+                const { data: admin2 } = await supabaseClient.from('profiles').select('id').eq('user_type', 'admin').limit(1).maybeSingle();
+                if (admin2) targetId = admin2.id;
+                else {
+                    container.innerHTML = '<p style="text-align:center; padding:2rem; color:#444;">Suporte ZeroZynapses offline. Verifique se existe um perfil Admin.</p>';
+                    return;
+                }
+            }
+        }
+
+        const { data: messages, error } = await supabaseClient
+            .from('messages')
+            .select('*')
+            .or(`and(sender_id.eq.${user.id},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${user.id})`)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error("Error fetching messages:", error);
+            return;
+        }
+
+        if (messages && messages.length > 0) {
+            container.innerHTML = messages.map(m => {
+                const isMine = m.sender_id === user.id;
+                const timeStr = new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                return `
+                    <div class="message ${isMine ? 'user' : 'other'}" style="margin-bottom: 1.25rem; display: flex; flex-direction: column; align-items: ${isMine ? 'flex-end' : 'flex-start'}">
+                        <div style="background: ${isMine ? '#ffffff' : '#111'}; color: ${isMine ? '#000' : '#fff'}; padding: 12px 18px; border-radius: 20px; border-bottom-${isMine?'right':'left'}-radius: 4px; max-width: 85%; font-size: 0.95rem; font-weight: 500; border: 1px solid ${isMine?'#fff':'#222'}">
+                            ${m.content}
+                        </div>
+                        <span style="font-size: 0.7rem; color: #444; margin-top: 6px; font-weight: 700; text-transform: uppercase;">${timeStr}</span>
+                    </div>
+                `;
+            }).join('');
+            container.scrollTop = container.scrollHeight;
+        } else {
+             container.innerHTML = `
+                <div style="text-align: center; padding: 3rem 1rem; opacity: 0.3;">
+                    <p style="font-size: 0.85rem; font-weight: 600;">Inicie uma conversa segura.</p>
+                </div>
+            `;
+        }
+    }
+
+    // --- Realtime Subscription ---
+    function setupRealtimeMessages() {
+        if (!supabaseClient) return;
+        
+        supabaseClient
+            .channel('public:messages')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                const chatId = window.currentChatId;
+                if (chatId) {
+                    fetchMessages(chatId);
+                }
+            })
+            .subscribe();
+    }
+
+    // --- Global Chat Send Function ---
+    function setupChatInput() {
+        // Use event delegation for the send button to be more robust
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('#btn-send-msg');
+            if (btn) {
+                e.preventDefault();
+                await handleSendMessage();
+            }
+        });
+
+        // Keydown listener for the input
+        document.addEventListener('keydown', async (e) => {
+            if (e.target.id === 'chat-input' && e.key === 'Enter') {
+                e.preventDefault();
+                await handleSendMessage();
+            }
+        });
+    }
+
+    async function handleSendMessage() {
+        const input = document.getElementById('chat-input');
+        if (!input) return;
+
+        const text = input.value.trim();
+        const chatId = window.currentChatId;
+        console.log("📤 handleSendMessage:", { chatId, text });
+
+        if (!text || !chatId) return;
+
+        if (!supabaseClient) {
+            console.error("Supabase client not initialized");
+            return alert("Erro: Conexão com o banco de dados não disponível.");
+        }
+
+        try {
+            const { data: authData } = await supabaseClient.auth.getUser();
+            const user = authData?.user;
+
+            if (!user) {
+                console.warn("User not logged in");
+                return alert("Você precisa estar logado para enviar mensagens.");
+            }
+
+            // Determine actual receiver ID
+            let receiverId = chatId;
+            if (chatId === 'support') {
+                const { data: admin } = await supabaseClient.from('profiles').select('id').eq('full_name', 'ZeroZynapses').single();
+                if (admin) receiverId = admin.id;
+                else {
+                    const { data: admin2 } = await supabaseClient.from('profiles').select('id').eq('user_type', 'admin').limit(1).maybeSingle();
+                    if (admin2) receiverId = admin2.id;
+                    else {
+                        console.error("Admin user 'ZeroZynapses' not found");
+                        return alert("Suporte ZeroZynapses indisponível. Admin não encontrado.");
+                    }
+                }
+            }
+
+            console.log("Sending to Supabase:", { sender: user.id, receiver: receiverId, content: text });
+            
+            const { error } = await supabaseClient.from('messages').insert([{
+                sender_id: user.id,
+                receiver_id: receiverId,
+                content: text
+            }]);
+
+            if (error) throw error;
+
+            console.log("✅ Message sent successfully");
+            input.value = '';
+            fetchMessages(chatId);
+            renderChatList();
+        } catch (err) {
+            console.error("❌ Error sending message:", err);
+            alert("Erro ao enviar mensagem: " + err.message);
+        }
+    }
+
+    // --- Helper Logic ---
+    function renderTimeSlots(selectedDate) {
+        const select = document.getElementById('agendamento-hora');
+        if (!select) return;
+
+        if (!selectedDate) {
+            select.innerHTML = '<option value="">Selecione a data primeiro...</option>';
+            return;
+        }
+
+        let options = '<option value="">Selecione um horário...</option>';
+        DATA.timeSlots.forEach(slot => {
+            const conflicted = isSlotConflicted(slot, selectedDate);
+            if (!conflicted) {
+                options += `<option value="${slot}">${slot}</option>`;
+            } else {
+                options += `<option value="${slot}" disabled>${slot} (Indisponível)</option>`;
+            }
+        });
+        select.innerHTML = options;
+    }
+
+    const dateInput = document.getElementById('agendamento-data');
+    if (dateInput) {
+        // Define data mínima como hoje
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.setAttribute('min', today);
+        
+        dateInput.onchange = (e) => {
+            const val = e.target.value;
+            if (val) {
+                const [year, month, day] = val.split('-');
+                renderTimeSlots(`${day}/${month}/${year}`);
+            } else {
+                renderTimeSlots('');
+            }
+        };
+    }
+
+    function isSlotConflicted(newSlot, newDate, profId) {
+        if (!newDate) return false;
+        const apps = JSON.parse(localStorage.getItem('user_appointments') || '[]');
+        const [nH, nM] = newSlot.split(':').map(Number);
+        const nT = nH * 60 + nM;
+        return apps.some(a => {
+            // Só conflita se for o mesmo profissional e o mesmo dia
+            if (a.date !== newDate || a.profId !== profId) return false;
+            const [h, m] = a.time.split(':').map(Number);
+            const t = h * 60 + m;
+            return Math.abs(nT - t) < 30;
+        });
+    }
+
+    function setupFinanceListeners() {
+        const costInput = document.getElementById('finance-cost');
+        const revInput = document.getElementById('finance-revenue');
+        const profitValue = document.getElementById('profit-value');
+        const form = document.getElementById('finance-form');
+
+        const update = () => {
+            const p = (parseFloat(revInput.value)||0) - (parseFloat(costInput.value)||0);
+            profitValue.innerText = `R$ ${p.toLocaleString('pt-BR', {minimumFractionDigits:2})}`;
+            profitValue.style.color = p >= 0 ? '#4ade80' : '#f87171';
+        };
+
+        if (costInput) costInput.oninput = update;
+        if (revInput) revInput.oninput = update;
+        if (form) form.onsubmit = async (e) => {
+            e.preventDefault();
+            const record = { cost: parseFloat(costInput.value), revenue: parseFloat(revInput.value), profit: parseFloat(revInput.value) - parseFloat(costInput.value), description: document.getElementById('finance-desc').value, created_at: new Date().toISOString() };
+            const { error } = await supabaseClient.from('finance_records').insert([record]);
+            if (error) return alert("Erro ao salvar.");
+            showSuccessModal('Salvo!', 'Registro financeiro armazenado.', () => { form.reset(); update(); renderFinanceList(); });
+        };
+    }
+
+    async function renderFinanceList() {
+        const container = document.getElementById('finance-list');
+        if (!container) return;
+        const { data } = await supabaseClient.from('finance_records').select('*').order('created_at', { ascending: false });
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p style="color:#555; text-align:center; padding: 2.5rem;">Nenhum registro financeiro.</p>';
+            return;
+        }
+        container.innerHTML = data.map(d => `
+            <div style="background:#111; padding:1.25rem; border-radius:16px; margin-bottom:1rem; border:1px solid #222; display:flex; justify-content:space-between; align-items: center;">
+                <div>
+                    <div style="font-weight:700; color: #fff;">${d.description}</div>
+                    <div style="font-size: 0.7rem; color: #444; margin-top: 2px;">${new Date(d.created_at).toLocaleDateString('pt-BR')}</div>
+                </div>
+                <div style="font-weight:900; font-size: 1.1rem; color:${d.profit>=0?'#4ade80':'#f87171'}">
+                    ${d.profit >= 0 ? '+' : ''} R$ ${d.profit.toLocaleString('pt-BR', {minimumFractionDigits:2})}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderCategories() {
+        const container = document.getElementById('home-categories');
+        if (!container) return;
+        container.innerHTML = (DATA.categories || []).map(cat => `
+            <div class="category-item" onclick="location.hash='#busca'">
+                <div class="category-icon" style="background: #111; border: 1px solid #222; border-radius: 16px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 8px;">${cat.icon}</div>
+                <span style="font-size: 0.75rem; font-weight: 700; color: #999;">${cat.name}</span>
+            </div>
+        `).join('');
+    }
+
+    function renderFeatured() {
+        const container = document.getElementById('featured-professionals');
+        if (!container) return;
+        container.innerHTML = (DATA.professionals || []).filter(p => p.featured).map(p => `
+            <div class="prof-card" onclick="location.hash='#profissional/${p.id}'" style="min-width: 160px; background: #111; border: 1px solid #222; padding: 1.25rem; border-radius: 20px;">
+                <div class="avatar-circle" style="background:${p.avatarColor}; margin-bottom: 1rem; width: 50px; height: 50px; font-size: 1.25rem; border: 2px solid #222;">${p.avatar}</div>
+                <h4 style="font-size: 0.95rem; font-weight: 800;">${p.name}</h4>
+                <p style="font-size: 0.75rem; color: #666; font-weight: 600; margin-top: 2px;">${p.specialty}</p>
+                <div style="margin-top: 12px; font-weight: 900; font-size: 0.8rem; color: #fff;">★ ${p.rating}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderSearchResults(query = '') {
+        const container = document.getElementById('search-results');
+        if (!container) return;
+        const filtered = DATA.professionals.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.specialty.toLowerCase().includes(query.toLowerCase()));
+        container.innerHTML = filtered.map(p => `
+            <div class="prof-card" onclick="location.hash='#profissional/${p.id}'" style="display: flex; gap: 1.25rem; align-items: center; padding: 1.25rem; background: #111; border: 1px solid #222; border-radius: 20px; margin-bottom: 1rem;">
+                <div class="avatar-circle" style="background:${p.avatarColor}; width: 60px; height: 60px; font-size: 1.5rem; border: 2px solid #222;">${p.avatar}</div>
+                <div>
+                    <h4 style="font-size: 1.1rem; font-weight: 800;">${p.name}</h4>
+                    <p style="font-size: 0.85rem; color: #666; font-weight: 600; margin-top: 2px;">${p.specialty} • ${p.distance}</p>
+                    <div style="margin-top: 8px; font-weight: 900; font-size: 0.85rem; color: #fff;">★ ${p.rating} (${p.reviews})</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function renderChatList() {
+        const chatList = document.getElementById('chat-list');
+        if (!chatList || !supabaseClient) return;
+
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) return;
+
+        // Fetch all unique conversation partners
+        const { data: msgs, error } = await supabaseClient
+            .from('messages')
+            .select('*')
+            .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+            .order('created_at', { ascending: false });
+
+        if (error || !msgs) return;
+
+        // Group by partner
+        const partnersMap = new Map();
+        msgs.forEach(m => {
+            const partnerId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
+            if (!partnersMap.has(partnerId)) {
+                partnersMap.set(partnerId, {
+                    lastMessage: m.content,
+                    time: new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                    timestamp: new Date(m.created_at).getTime()
+                });
+            }
+        });
+
+        const partners = Array.from(partnersMap.keys());
+        if (partners.length === 0) {
+            chatList.innerHTML = `
+                <div style="text-align: center; padding: 3rem 1rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.2;">💬</div>
+                    <p style="color: #444; font-size: 0.9rem; font-weight: 600;">Nenhuma conversa iniciada.</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Fetch profile details for partners
+        const { data: profiles } = await supabaseClient.from('profiles').select('*').in('id', partners);
+        
+        chatList.innerHTML = partners.map(pid => {
+            const p = profiles?.find(prof => prof.id === pid) || { full_name: 'Usuário', id: pid };
+            const info = partnersMap.get(pid);
+            const avatarHtml = p.avatar_url 
+                ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` 
+                : `<span style="font-weight: 800;">${(p.full_name || 'U')[0].toUpperCase()}</span>`;
+            
+            return `
+                <div class="chat-list-item" onclick="location.hash='#chat-msg/${p.id}'" style="display: flex; gap: 1rem; padding: 1.25rem; background: #111; border: 1px solid #222; border-radius: 20px; margin-bottom: 0.75rem; align-items: center;">
+                    <div class="avatar-circle" style="background: ${p.avatarColor || '#333'}; width: 50px; height: 50px; border: 2px solid #222; display: flex; align-items: center; justify-content: center; font-weight: 800; border-radius: 50%; overflow: hidden;">
+                        ${avatarHtml}
+                    </div>
+                    <div class="chat-info" style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4 style="font-weight: 800; font-size: 1.05rem;">${p.full_name || p.name}</h4>
+                            <span style="font-size: 0.7rem; color: #444; font-weight: 800;">${info.time}</span>
+                        </div>
+                        <div class="last-msg" style="font-size: 0.85rem; color: #666; margin-top: 2px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${info.lastMessage}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // --- Chat Search Logic ---
+    function setupChatSearch() {
+        const input = document.getElementById('chat-search-input');
+        const resultsContainer = document.getElementById('chat-search-results');
+        const searchList = document.getElementById('chat-search-list');
+        const convsList = document.getElementById('chat-conversations-list');
+
+        if (!input) return;
+
+        input.addEventListener('input', (e) => {
+            const query = e.target.value.trim().toLowerCase();
+            const type = localStorage.getItem('user_type') || 'client';
+
+            if (query.length === 0) {
+                resultsContainer.style.display = 'none';
+                convsList.style.display = 'block';
+                return;
+            }
+
+            resultsContainer.style.display = 'block';
+            convsList.style.display = 'none';
+
+            let results = [];
+            
+            if (type === 'admin') {
+                // Admin busca todos
+                results = [
+                    ...DATA.professionals.map(p => ({ ...p, type: 'professional' })),
+                    ...DATA.clients.map(c => ({ ...c, type: 'client' }))
+                ];
+            } else if (type === 'professional') {
+                // Profissional busca clientes
+                results = DATA.clients.map(c => ({ ...c, type: 'client' }));
+            } else {
+                // Cliente busca profissionais
+                results = DATA.professionals.map(p => ({ ...p, type: 'professional' }));
+            }
+
+            const filtered = results.filter(item => 
+                (item.full_name || item.name || '').toLowerCase().includes(query) ||
+                (item.specialty || '').toLowerCase().includes(query)
+            );
+
+            if (filtered.length === 0) {
+                searchList.innerHTML = '<p style="color: #444; font-size: 0.85rem; text-align: center; padding: 1rem;">Nenhum resultado encontrado.</p>';
+                return;
+            }
+
+            searchList.innerHTML = filtered.map(item => {
+                const name = item.full_name || item.name;
+                const sub = item.type === 'professional' ? (item.specialty || 'Profissional') : 'Cliente';
+                const id = item.id;
+                const avatar = item.avatar_url 
+                    ? `<img src="${item.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` 
+                    : `<span style="font-weight: 800;">${(name || 'U')[0]}</span>`;
+                
+                return `
+                    <div class="search-result-item" onclick="location.hash='#chat-msg/${id}'" style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.02); border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 0.5rem; cursor: pointer;">
+                        <div style="width: 45px; height: 45px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #333;">
+                            ${avatar}
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">${name}</div>
+                            <div style="font-size: 0.75rem; color: #666; font-weight: 600;">${sub}</div>
+                        </div>
+                        <span style="font-size: 1.2rem; opacity: 0.3;">💬</span>
+                    </div>
+                `;
+            }).join('');
+        });
+    }
+
+    function renderAdminStats() {
+        const container = document.getElementById('admin-stats');
+        if (!container) return;
+        container.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="background:#111; border: 1px solid #222; padding:1.5rem; border-radius:20px; text-align: center;">
+                    <div style="font-size: 0.75rem; color: #555; font-weight: 800; text-transform: uppercase;">Usuários</div>
+                    <div style="font-size: 1.75rem; font-weight: 900; color: #fff; margin-top: 4px;">250</div>
+                </div>
+                <div style="background:#111; border: 1px solid #222; padding:1.5rem; border-radius:20px; text-align: center;">
+                    <div style="font-size: 0.75rem; color: #555; font-weight: 800; text-transform: uppercase;">Ativos</div>
+                    <div style="font-size: 1.75rem; font-weight: 900; color: #4ade80; margin-top: 4px;">182</div>
+                </div>
+            </div>
+        `;
+    }
+
+    function showSuccessModal(title, message, callback) {
+        const modal = document.getElementById('success-modal');
+        const titleEl = document.getElementById('success-modal-title');
+        const messageEl = document.getElementById('success-modal-message');
+        const btn = document.getElementById('success-modal-btn');
+        if (!modal) return;
+        titleEl.innerText = title;
+        messageEl.innerText = message;
+        modal.classList.add('active');
+        btn.onclick = () => {
+            modal.classList.remove('active');
+            if (callback) callback();
+        };
+    }
+
+
+
+    // Global Password Toggle Logic
+    const togglePasswordVisibility = (e) => {
+        const toggleBtn = e.target.closest('.toggle-password');
+        if (toggleBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const wrapper = toggleBtn.closest('.password-wrapper');
+            if (!wrapper) return;
+            const input = wrapper.querySelector('input');
+            if (input) {
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    toggleBtn.textContent = '🔒';
+                } else {
+                    input.type = 'password';
+                    toggleBtn.textContent = '👁️';
+                }
+            }
+        }
+    };
+
+    document.addEventListener('click', togglePasswordVisibility);
+    document.addEventListener('mousedown', togglePasswordVisibility);
+
+    // --- Map Picker Logic ---
+    let pickerMap;
+    let targetAddressId, targetCityId;
+
+    window.openMapPicker = (addressId, cityId) => {
+        targetAddressId = addressId;
+        targetCityId = cityId;
+        showOverlay('map-picker');
+        
+        if (!pickerMap) {
+            // Light theme tiles with nice look
+            pickerMap = L.map('map-picker-container', { zoomControl: false }).setView([-23.5505, -46.6333], 15);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '©OpenStreetMap contributors'
+            }).addTo(pickerMap);
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    pickerMap.setView([pos.coords.latitude, pos.coords.longitude], 17);
+                });
+            }
+        } else {
+            setTimeout(() => pickerMap.invalidateSize(), 300);
+        }
+    };
+
+    const mapSearchInput = document.getElementById('map-search-input');
+    const mapSearchBtn = document.getElementById('btn-map-search-go');
+
+    if (mapSearchBtn && mapSearchInput) {
+        const performMapSearch = async () => {
+            let query = mapSearchInput.value.trim();
+            if (!query) return;
+
+            mapSearchBtn.innerText = "⏳";
+            mapSearchBtn.disabled = true;
+
+            try {
+                // Se parecer um CEP brasileiro (8 dígitos, com ou sem traço)
+                const cepRegex = /^\d{5}-?\d{3}$/;
+                if (cepRegex.test(query)) {
+                    const cleanCep = query.replace('-', '');
+                    try {
+                        const viaCepRes = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+                        const viaCepData = await viaCepRes.json();
+                        if (!viaCepData.erro && viaCepData.logradouro) {
+                            // Atualiza a query para buscar pela rua e cidade retornados do CEP
+                            query = `${viaCepData.logradouro}, ${viaCepData.localidade}`;
+                        }
+                    } catch (e) {
+                        console.warn("Falha ao consultar ViaCEP, tentando Nominatim direto.", e);
+                    }
+                }
+
+                // Search for the address using Nominatim
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+                const results = await response.json();
+
+                if (results.length > 0) {
+                    const { lat, lon } = results[0];
+                    if (pickerMap) {
+                        pickerMap.setView([lat, lon], 17);
+                    }
+                } else {
+                    alert("Local não encontrado. Tente digitar o nome da rua ou um CEP válido.");
+                }
+            } catch (err) {
+                console.error("Erro na busca do mapa:", err);
+                alert("Erro ao conectar com o serviço de busca.");
+            } finally {
+                mapSearchBtn.innerText = "🔍";
+                mapSearchBtn.disabled = false;
+            }
+        };
+
+        mapSearchBtn.onclick = performMapSearch;
+        mapSearchInput.onkeypress = (e) => {
+            if (e.key === 'Enter') performMapSearch();
+        };
+    }
+
+    window.closeMapPicker = () => {
+        document.getElementById('map-picker').classList.remove('active');
+    };
+
+    const confirmBtn = document.getElementById('confirm-map-location');
+    if (confirmBtn) {
+        confirmBtn.onclick = async () => {
+            const center = pickerMap.getCenter();
+            confirmBtn.innerText = "...";
+            confirmBtn.disabled = true;
+            
+            await fillAddressFromCoords(center.lat, center.lng, targetAddressId, targetCityId, confirmBtn, "Confirmar");
+            closeMapPicker();
+        };
+    }
+
+    // --- Geolocation Logic ---
+    window.getCurrentLocation = (addressId, cityId) => {
+        if (!navigator.geolocation) {
+            return alert("Geolocalização não suportada pelo seu navegador.");
+        }
+
+        const btn = event.currentTarget;
+        const originalIcon = btn.innerText;
+        btn.innerText = "⏳";
+        btn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const { latitude, longitude } = position.coords;
+            fillAddressFromCoords(latitude, longitude, addressId, cityId, btn, originalIcon);
+        }, async (err) => {
+            console.warn("Navegador falhou na localização, tentando IP-Based Fallback...", err);
+            try {
+                // Fallback using IP-API (Free for limited use)
+                const response = await fetch('https://ipapi.co/json/');
+                const data = await response.json();
+                
+                if (data.error) throw new Error(data.reason);
+
+                const city = data.city || data.region || "Não identificado";
+                const address = `${data.city}, ${data.region}, ${data.country_name} (Via IP)`;
+
+                if (addressId) {
+                    const el = document.getElementById(addressId);
+                    if (el) { el.value = address; el.dispatchEvent(new Event('input')); }
+                }
+                if (cityId) {
+                    const el = document.getElementById(cityId);
+                    if (el) { el.value = city; el.dispatchEvent(new Event('input')); }
+                }
+                
+                showSuccessModal('Localizado via Rede!', 'Usamos sua conexão de internet para estimar seu endereço.');
+            } catch (fallbackErr) {
+                let msg = "Erro ao obter localização.";
+                switch(err.code) {
+                    case 1: msg = "Permissão negada. Ative a localização no navegador."; break;
+                    case 2: msg = "Localização indisponível no dispositivo."; break;
+                    case 3: msg = "Tempo esgotado."; break;
+                }
+                alert(msg + " (Fallback de rede também falhou)");
+            } finally {
+                btn.innerText = originalIcon;
+                btn.disabled = false;
+            }
+        }, {
+            enableHighAccuracy: false,
+            timeout: 8000,
+            maximumAge: 30000
+        });
+    };
+
+    async function fillAddressFromCoords(lat, lon, addressId, cityId, btn, icon) {
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+            const data = await response.json();
+            
+            const addrData = data.address;
+            const street = addrData.road || addrData.pedestrian || addrData.suburb || "Rua não identificada";
+            const number = addrData.house_number || "";
+            const neighborhood = addrData.neighbourhood || addrData.suburb || "";
+            
+            const displayAddress = `${street}${neighborhood ? ' - ' + neighborhood : ''}`;
+            const city = addrData.city || addrData.town || addrData.village || addrData.state || "Não identificado";
+
+            if (addressId) {
+                const el = document.getElementById(addressId);
+                if (el) { el.value = displayAddress; el.dispatchEvent(new Event('input')); }
+            }
+            if (cityId) {
+                const el = document.getElementById(cityId);
+                if (el) { el.value = city; el.dispatchEvent(new Event('input')); }
+            }
+            
+            // Auto-fill the number field if we find it
+            const numEl = document.getElementById('edit-user-number');
+            if (numEl && number) {
+                numEl.value = number;
+                numEl.dispatchEvent(new Event('input'));
+            }
+
+            showSuccessModal('Localizado!', 'Rua e bairro identificados com sucesso.');
+        } catch (err) {
+            alert("Localizado, mas houve erro ao obter os detalhes da rua.");
+        } finally {
+            btn.innerText = icon;
+            btn.disabled = false;
+        }
+    }
+
+    // --- Helper: Upload File to Supabase ---
+    async function uploadFileToSupabase(file, userId, bucket) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${userId}/${Date.now()}.${fileExt}`;
+        
+        const { error: uploadError } = await supabaseClient.storage
+            .from(bucket)
+            .upload(fileName, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabaseClient.storage
+            .from(bucket)
+            .getPublicUrl(fileName);
+            
+        return publicUrl;
+    }
+
+    // --- Search Logic ---
+    // Pré-carrega o cache com dados locais para garantir que o feed nunca fique vazio
+    window.allProfessionalsCache = DATA.professionals || [];
+
+    window.renderSearchProfessionals = async function() {
+        // Garante que o fallback local já esteja no cache antes de qualquer await
+        if (!window.allProfessionalsCache || window.allProfessionalsCache.length === 0) {
+            window.allProfessionalsCache = DATA.professionals || [];
+        }
+
+        // Renderiza imediatamente com dados locais enquanto aguarda Supabase
+        renderRecentProfessionals();
+        filterAndRenderSearch();
+
+        try {
+            if (!supabaseClient) throw new Error("Supabase não disponível");
+
+            const container = document.getElementById('search-results');
+            if (container) {
+                container.innerHTML = '<div style="text-align:center; padding:2rem; color:#888;">Atualizando...</div>';
+            }
+
+            const { data: users, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .in('user_type', ['professional', 'client'])
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            // Merge with local DATA for demonstration/richness
+            const mergedUsers = [...(users || [])];
+            
+            // Add local pros if not in DB
+            DATA.professionals.forEach(p => {
+                if (!mergedUsers.find(u => u.id === p.id)) mergedUsers.push(p);
+            });
+            // Add local clients if not in DB
+            DATA.clients.forEach(c => {
+                if (!mergedUsers.find(u => u.id === c.id)) mergedUsers.push(c);
+            });
+
+            if (mergedUsers.length > 0) {
+                window.allProfessionalsCache = mergedUsers;
+            }
+        } catch (err) {
+            console.warn("Erro ao buscar no Supabase, mantendo dados locais:", err);
+        } finally {
+            // Renderiza novamente com os dados finais (Supabase ou fallback local)
+            renderRecentProfessionals();
+            filterAndRenderSearch();
+        }
+    };
+
+    function renderRecentProfessionals() {
+        const recentContainer = document.getElementById('recent-professionals-container');
+        const recentList = document.getElementById('recent-professionals-list');
+        if (!recentContainer || !recentList || !window.allProfessionalsCache) return;
+
+        const recents = window.allProfessionalsCache.slice(0, 4);
+
+        if (recents.length > 0) {
+            recentContainer.style.display = 'block';
+            recentList.innerHTML = recents.map(p => {
+                const avatarHtml = p.avatar_url 
+                    ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+                    : `<div style="width:100%; height:100%; background:linear-gradient(135deg, #1a1a1a, #000); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:2rem; border-radius:50%; border: 1px solid #333;">${(p.full_name || p.name || 'P')[0].toUpperCase()}</div>`;
+                
+                return `
+                <div class="prof-card" style="min-width: 150px; max-width: 150px; background: #111; border: 1px solid #222; padding: 1.25rem; border-radius: 20px; text-align: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.4);" onclick="location.hash='#profissional/${p.id}'">
+                    <div style="width:65px; height:65px; margin: 0 auto 0.75rem;">
+                        ${avatarHtml}
+                    </div>
+                    <div style="font-weight:800; font-size:0.95rem; color: #fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.full_name || p.name || 'Profissional'}</div>
+                    <div style="font-size:0.75rem; color:#888; font-weight: 600; margin-top: 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.category || 'Serviços'}</div>
+                    <div style="margin-top: 8px; font-size: 0.7rem; font-weight: 800; color: #10B981; text-transform: uppercase;">Novo 🔥</div>
+                </div>`;
+            }).join('');
+        } else {
+            recentContainer.style.display = 'none';
+        }
+    }
+
+    function filterAndRenderSearch() {
+        const container = document.getElementById('search-results');
+        const searchInput = document.getElementById('search-input');
+        const recentContainer = document.getElementById('recent-professionals-container');
+        if (!container || !window.allProfessionalsCache) return;
+
+        const query = (searchInput.value || '').toLowerCase().trim();
+        const categoryFilter = document.getElementById('category-filter');
+        const selectedCategory = categoryFilter ? categoryFilter.value : 'Todos';
+
+        // Opcional: Se quiser que o feed de recentes suma durante a busca, descomente as linhas abaixo.
+        // Como o usuário quer ver o feed sempre que clica na busca, vamos deixá-lo visível.
+        if (recentContainer) {
+            recentContainer.style.display = window.allProfessionalsCache.length > 0 ? 'block' : 'none';
+        }
+
+        const filtered = window.allProfessionalsCache.filter(p => {
+            const name = (p.full_name || p.name || '').toLowerCase();
+            const city = (p.city || '').toLowerCase();
+            const addr = (p.address || '').toLowerCase();
+            const cat = (p.category || '').toLowerCase();
+            
+            const matchesQuery = name.includes(query) || city.includes(query) || addr.includes(query) || cat.includes(query);
+            const matchesCategory = selectedCategory === 'Todos' || p.category === selectedCategory;
+            
+            return matchesQuery && matchesCategory;
+        });
+
+        if (filtered.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:2rem; color:#888;">Nenhum profissional encontrado.</div>';
+            return;
+        }
+
+        container.innerHTML = filtered.map(p => {
+            const isProf = p.user_type === 'professional';
+            const targetHash = isProf ? `#profissional-home/${p.id}` : `#client-home/${p.id}`;
+            const avatarHtml = p.avatar_url 
+                ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+                : `<div style="width:100%; height:100%; background:linear-gradient(135deg, ${isProf ? '#a855f7, #6b21a8' : '#444, #111'}); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.5rem; border-radius:50%; border: 1px solid #333;">${(p.full_name || 'U')[0].toUpperCase()}</div>`;
+            
+            const mainService = isProf && p.services && p.services.length > 0 ? p.services[0].name : (isProf ? p.specialty : '');
+            const mainPrice = isProf && p.services && p.services.length > 0 ? `R$ ${p.services[0].price}` : '';
+            
+            return `
+            <div class="card" style="display:flex; gap:1rem; align-items:center; cursor:pointer; background: #111; border: 1px solid #222; border-radius: 20px; padding: 1.25rem; margin-bottom: 1rem; position: relative;" onclick="location.hash='${targetHash}'">
+                <div style="width:70px; height:70px; flex-shrink:0;">
+                    ${avatarHtml}
+                </div>
+                <div style="flex:1; overflow:hidden;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="font-weight:800; font-size:1.1rem; color: #fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.full_name || 'Usuário'}</div>
+                    </div>
+                    <div style="font-size:0.75rem; color:#888; font-weight: 600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top: 4px;">
+                        <span style="color: ${isProf ? 'var(--primary-accent)' : '#aaa'};">${isProf ? '💼 ' + (p.category || 'Profissional') : '👤 Cliente'}</span> ${isProf ? '• ★ ' + (p.rating || '5.0') : ''}
+                    </div>
+                    
+                    ${mainService ? `
+                        <div style="font-size:0.85rem; color:#fff; font-weight: 700; margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                            <span>✨ ${mainService}</span>
+                            ${mainPrice ? `<span style="color: #666; font-weight: 600; font-size: 0.8rem;">• ${mainPrice}</span>` : ''}
+                        </div>
+                    ` : ''}
+
+                    <div style="font-size:0.7rem; color:#555; margin-top:8px; display: flex; align-items: center; gap: 4px;">
+                        <span>📍</span> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.address || p.city || 'Local não informado'}</span>
+                    </div>
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    const searchInput = document.getElementById('search-input');
+    const categoryFilter = document.getElementById('category-filter');
+    const searchTrigger = document.getElementById('btn-search-trigger');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', filterAndRenderSearch);
+    }
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', filterAndRenderSearch);
+    }
+    if (searchTrigger) {
+        searchTrigger.addEventListener('click', () => {
+            // Executa a busca real no banco de dados quando clica no ícone
+            if (typeof renderSearchProfessionals === 'function') {
+                renderSearchProfessionals();
+            }
+        });
+    }
+
+    // --- Helper: Setup Image Preview for Registration ---
+    function setupImagePreview(inputId, previewId) {
+        const input = document.getElementById(inputId);
+        const preview = document.getElementById(previewId);
+        if (input && preview) {
+            input.addEventListener('change', function() {
+                const file = this.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        preview.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;" />`;
+                    }
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+    }
+    
+    setupImagePreview('prof-photo-input', 'prof-photo-preview');
+    setupImagePreview('prof-logo-input', 'prof-logo-preview');
+
+    // --- Logic for Multi-selection Specialties ---
+    const specialtyInput = document.getElementById('specialties-input');
+    const addSpecialtyBtn = document.getElementById('btn-add-specialty');
+    const chipsContainer = document.getElementById('prof-specialties-chips');
+    const selectedSpecialties = new Set();
+
+    if (specialtyInput && addSpecialtyBtn && chipsContainer) {
+        const addSpecialty = (value) => {
+            const val = value || specialtyInput.value.trim();
+            if (!val || selectedSpecialties.has(val)) {
+                specialtyInput.value = '';
+                return;
+            }
+
+            if (selectedSpecialties.size >= 5) {
+                alert("Você pode escolher no máximo 5 especialidades.");
+                specialtyInput.value = '';
+                return;
+            }
+
+            // Remove placeholder if it's the first one
+            if (selectedSpecialties.size === 0) {
+                chipsContainer.innerHTML = '';
+            }
+
+            selectedSpecialties.add(val);
+            
+            const chip = document.createElement('div');
+            chip.className = 'chip';
+            chip.style.background = '#ffffff';
+            chip.style.color = '#000000';
+            chip.style.border = 'none';
+            chip.style.padding = '5px 12px';
+            chip.style.fontSize = '0.85rem';
+            chip.innerHTML = `${val} <span style="margin-left:8px; cursor:pointer; font-weight:bold;">×</span>`;
+            
+            chip.querySelector('span').onclick = () => {
+                selectedSpecialties.delete(val);
+                chip.remove();
+                if (selectedSpecialties.size === 0) {
+                    chipsContainer.innerHTML = '<span style="color: #555; font-size: 0.8rem; padding: 5px;">Selecione abaixo...</span>';
+                }
+            };
+
+            chipsContainer.appendChild(chip);
+            specialtyInput.value = '';
+        };
+
+        addSpecialtyBtn.onclick = () => addSpecialty();
+        
+        specialtyInput.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addSpecialty();
+            }
+        };
+    }
+
+    window.doLogout = async () => {
+        if (supabaseClient) {
+            await supabaseClient.auth.signOut();
+        }
+        localStorage.clear();
+        console.log("Usuário deslogado manualmente.");
+        window.location.hash = '#login';
+    };
+
+    let logoutTimer;
+    function setupLongPressLogout() {
+        const target = document.body;
+        const LONG_PRESS_DURATION = 3000;
+
+        const start = (e) => {
+            // Apenas para mobile ou cliques longos
+            logoutTimer = setTimeout(() => {
+                const hasSession = !!localStorage.getItem('user_email');
+                if (hasSession && confirm("Deseja sair da sua conta?")) {
+                    window.doLogout();
+                }
+            }, LONG_PRESS_DURATION);
+        };
+
+        const cancel = () => {
+            clearTimeout(logoutTimer);
+        };
+
+        // Mobile
+        target.addEventListener('touchstart', start, { passive: true });
+        target.addEventListener('touchend', cancel);
+        target.addEventListener('touchmove', cancel);
+        
+        // Desktop
+        target.addEventListener('mousedown', start);
+        target.addEventListener('mouseup', cancel);
+        target.addEventListener('mouseleave', cancel);
+    }
+
+    window.resetApp = function() {
+        if (confirm("Isso irá limpar todos os seus dados locais e deslogar. Deseja continuar?")) {
+            localStorage.clear();
+            supabaseClient.auth.signOut();
+            window.location.hash = '#splash';
+            window.location.reload();
+        }
+    };
+
+    init();
+});
