@@ -19,9 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
             constructor(url, protocols) {
                 let rewrittenUrl = url;
                 if (typeof url === 'string' && url.includes('/api/supabase/realtime/v1/websocket')) {
-                    rewrittenUrl = url.replace(window.location.origin + "/api/supabase", "https://oryguljbqcphbtiapvwk.supabase.co")
-                                      .replace(/^http/, 'ws')
-                                      .replace(/^https/, 'wss');
+                    rewrittenUrl = url.replace(new RegExp('wss?://[^/]+/api/supabase'), "wss://oryguljbqcphbtiapvwk.supabase.co");
                     console.log("Rewriting WebSocket URL to direct Supabase:", rewrittenUrl);
                 }
                 super(rewrittenUrl, protocols);
