@@ -4604,15 +4604,12 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
     window.toggleSearchSortMode = function() {
         const iconEl = document.getElementById('search-sort-icon');
-        const textEl = document.getElementById('search-sort-text');
         if (window.searchSortMode === 'proximity') {
             window.searchSortMode = 'rating';
             if (iconEl) iconEl.innerText = '⭐';
-            if (textEl) textEl.innerText = 'Estrelas';
         } else {
             window.searchSortMode = 'proximity';
             if (iconEl) iconEl.innerText = '📍';
-            if (textEl) textEl.innerText = 'Proximidade';
         }
         filterAndRenderSearch();
     };

@@ -2016,7 +2016,7 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
     flex-shrink: 0;
     padding: 1.5rem 1.5rem 1rem 1.5rem;
     background: #000;
-    margin-top: -1.5vh;
+    margin-top: -2vh;
 }
 
 #busca #search-results {
