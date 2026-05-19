@@ -4455,7 +4455,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
             const result = await Promise.race([
                 query,
-                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 4000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
             ]);
 
             if (result.error) throw result.error;
@@ -5755,7 +5755,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
             const result = await Promise.race([
                 query.order('date', { ascending: false }).order('time', { ascending: false }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 4000))
+                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
             ]);
 
             if (result.error) throw result.error;
@@ -6137,7 +6137,7 @@ window.renderAgendamentoScreen = async function() {
         const query = supabaseClient.from('profiles').select('city, address, user_type').eq('id', user.id).maybeSingle();
         const result = await Promise.race([
             query,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 3000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
         ]);
         userProfile = result.data || null;
     } catch(e) {
@@ -6497,7 +6497,7 @@ window.renderAgendamentoScreen = async function() {
                     const query = supabaseClient.from('profiles').select('id, full_name, specialty, price:price_range, phone, address, city').eq('user_type', 'professional');
                     const result = await Promise.race([
                         query,
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 10000))
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
                     ]);
                     if (result.error) throw result.error;
                     data = result.data || [];
@@ -6580,7 +6580,7 @@ window.renderAgendamentoScreen = async function() {
 
                 const result = await Promise.race([
                     query.order('date', { ascending: true }).order('time', { ascending: true }),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 4000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
                 ]);
 
                 if (result.error) throw result.error;
@@ -6785,7 +6785,7 @@ window.renderAgendamentoScreen = async function() {
 
                 const result = await Promise.race([
                     query,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 6000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
                 ]);
 
                 if (result.error) throw result.error;
@@ -6883,7 +6883,7 @@ window.renderAgendamentoScreen = async function() {
 
                 const dupResult = await Promise.race([
                     duplicateQuery,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 6000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
                 ]);
 
                 if (dupResult.error) throw dupResult.error;
@@ -6912,7 +6912,7 @@ window.renderAgendamentoScreen = async function() {
                 const insertQuery = supabaseClient.from('appointments').insert([insertData]);
                 const insertResult = await Promise.race([
                     insertQuery,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 6000))
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
                 ]);
 
                 let error = insertResult.error;
