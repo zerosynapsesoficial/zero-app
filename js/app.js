@@ -6965,6 +6965,39 @@ window.renderAgendamentoScreen = async function() {
                     return;
                 }
 
+                // Ensure client profile exists in public.profiles before creating the appointment to prevent foreign key violation!
+                try {
+                    const profileCheckResult = await Promise.race([
+                        supabaseClient.from('profiles').select('id, full_name').eq('id', targetClientId).maybeSingle(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000))
+                    ]);
+                    
+                    if (!profileCheckResult || !profileCheckResult.data) {
+                        console.log("Client profile not found in public.profiles. Dynamically creating profile to prevent foreign key violation...");
+                        let fallbackName = 'Cliente';
+                        
+                        // If it's the logged-in client, try to get their email or name
+                        if (!isAdminBooking && user) {
+                            fallbackName = user.email ? user.email.split('@')[0] : 'Cliente';
+                        } else if (isAdminBooking) {
+                            // If it's an admin booking a client, fetch client name from auth if possible or use default
+                            fallbackName = 'Cliente ADM';
+                        }
+                        
+                        const freshProfile = {
+                            id: targetClientId,
+                            full_name: fallbackName,
+                            user_type: 'client',
+                            created_at: new Date().toISOString()
+                        };
+                        
+                        await supabaseClient.from('profiles').insert([freshProfile]);
+                        console.log("Client profile dynamically created successfully!");
+                    }
+                } catch (profileErr) {
+                    console.warn("⚠️ Could not verify or dynamically create client profile:", profileErr);
+                }
+
                 let insertData = {
                     professional_id: profId,
                     client_id: targetClientId,
