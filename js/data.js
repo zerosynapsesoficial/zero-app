@@ -12,7 +12,7 @@ export const DATA = {
 
   professionals: [
     {
-      id: 'prof-101', user_type: 'professional', full_name: 'Marcos Silva', category: 'Barbearia & Estilo', specialty: 'Corte Masculino e Feminino',
+      id: 'prof-101', user_type: 'professional', full_name: 'Marcos Silva', category: 'Salão', specialty: 'Corte Masculino e Feminino',
       rating: 4.9, reviews: 85, price: 45, priceUnit: 'corte', subscription_plan: 'Plano Plus',
       city: 'São Paulo', address: 'Rua das Acácias, 118 - Santa Edwiges', verified: true, points: 450,
       bio: 'Especialista em cortes modernos e coloração. Com mais de 10 anos de experiência, busco sempre a excelência no atendimento e o bem-estar dos meus clientes.',
@@ -39,7 +39,7 @@ export const DATA = {
       ],
     },
     {
-      id: 'prof-103', user_type: 'professional', full_name: 'Juliana Beauty', category: 'Estética', specialty: 'Estética e Maquiagem',
+      id: 'prof-103', user_type: 'professional', full_name: 'Juliana Beauty', category: 'Estúdio de Beleza', specialty: 'Estética e Maquiagem',
       rating: 5.0, reviews: 64, price: 120, priceUnit: 'sessão', subscription_plan: 'Plano Plus',
       city: 'São Paulo', address: 'Rua José Ferreira Lima, 62 - Jardim ABC', verified: true, points: 1200,
       bio: 'Especialista em estética avançada e maquiagem para eventos. Transformando vidas através da beleza e autoestima.',
@@ -54,7 +54,7 @@ export const DATA = {
       ],
     },
     {
-      id: 'prof-104', user_type: 'professional', full_name: 'Bruno Style', category: 'Beleza Afro', specialty: 'Tranças e Mega Hair',
+      id: 'prof-104', user_type: 'professional', full_name: 'Bruno Style', category: 'Espaço', specialty: 'Tranças e Mega Hair',
       rating: 4.7, reviews: 42, price: 80, priceUnit: 'hora',
       city: 'São Paulo', address: 'Travessa Santa Helena, 34 - Centro', verified: true, points: 310,
       bio: 'Especialista em tranças nagô, box braids e aplicação de mega hair. Arte e resistência em cada detalhe.',
