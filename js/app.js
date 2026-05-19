@@ -4656,7 +4656,12 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             filtered.sort((a, b) => {
                 const ratingA = parseFloat(a.rating) || 0;
                 const ratingB = parseFloat(b.rating) || 0;
-                return ratingB - ratingA;
+                if (ratingB !== ratingA) {
+                    return ratingB - ratingA;
+                }
+                const nameA = (a.full_name || a.name || '').toLowerCase();
+                const nameB = (b.full_name || b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
             });
         } else {
             const userCity = (localStorage.getItem('user_city') || 'São Paulo').split(',')[0].trim().toLowerCase();
@@ -4670,9 +4675,10 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 if (matchesA && !matchesB) return -1;
                 if (!matchesA && matchesB) return 1;
                 
-                const ratingA = parseFloat(a.rating) || 0;
-                const ratingB = parseFloat(b.rating) || 0;
-                return ratingB - ratingA;
+                // Fallback de proximidade: Ordena alfabeticamente para diferenciar visualmente da ordenação por Estrelas
+                const nameA = (a.full_name || a.name || '').toLowerCase();
+                const nameB = (b.full_name || b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
             });
         }
 
