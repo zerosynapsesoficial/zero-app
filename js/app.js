@@ -7,6 +7,15 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 let supabaseClient;
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Dynamic Mobile Viewport Height Custom CSS Variable ---
+    function updateVh() {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+    window.addEventListener('resize', updateVh);
+    window.addEventListener('orientationchange', updateVh);
+    updateVh();
+
     // --- Initialize Supabase ---
     // Hardcoding keys and using same-origin proxy for REST while keeping raw WebSocket url for Realtime
     const proxyUrl = window.location.origin + "/api/supabase";
@@ -37,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     storage: window.localStorage
                 }
             });
+            window.supabaseClient = supabaseClient; // Expose globally
             console.log("Supabase Client initialized natively through same-origin proxy.");
             
             // Test connection
@@ -81,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (session && session.user) {
                 const user = session.user;
                 localStorage.setItem('user_email', user.email);
+                localStorage.setItem('user_id', user.id); // Save authentic Supabase UUID
                 
                 setupNotificationsSubscription();
                 updateNotificationBadges();
@@ -94,6 +105,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!localStorage.getItem('user_type')) {
                         localStorage.setItem('user_type', user.user_metadata?.user_type || 'client');
                         localStorage.setItem('user_name', user.user_metadata?.full_name || user.email);
+                    }
+                    // CARREGA PRIMEIRAMENTE A FOTO DE PERFIL GOOGLE
+                    const googlePic = user.user_metadata?.avatar_url || user.user_metadata?.picture;
+                    if (googlePic && !localStorage.getItem('user_photo')) {
+                        localStorage.setItem('user_photo', googlePic);
                     }
                     
                     window.location.hash = '#home';
@@ -121,6 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Only clear if we are sure we want to logout
                 if (window.location.hash !== '#login') {
                     localStorage.removeItem('user_email');
+                    localStorage.removeItem('user_id'); // Clear on sign out
                     localStorage.removeItem('user_type');
                     window.location.hash = '#login';
                 }
@@ -158,22 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // 3. Mock User & Admin Recovery (If session is lost but mock data exists)
-            if (!user && hasEmail) {
-                console.log("Recovering mock session for:", hasEmail);
-                const userType = localStorage.getItem('user_type') || 'client';
-                const userName = localStorage.getItem('user_name') || 'Usuário';
-                return {
-                    id: localStorage.getItem('user_id') || '00000000-0000-0000-0000-000000000000',
-                    email: hasEmail === 'ZeroZynapses' ? 'lara.cabeleireira@teste.com' : hasEmail,
-                    user_metadata: {
-                        full_name: userName,
-                        user_type: userType
-                    }
-                };
-            }
-
-            // 4. Fallback: Query Supabase active session only if local user was not found
+            // 3. Fallback: Query Supabase active session only if local user was not found
             if (!user) {
                 try {
                     const sessionData = await withTimeout(
@@ -187,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // 5. Fallback: Query fresh user fetch from Supabase
+            // 4. Fallback: Query fresh user fetch from Supabase
             if (!user) {
                 try {
                     const authData = await withTimeout(
@@ -198,6 +200,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     user = authData?.data?.user;
                 } catch (e) {
                     console.warn("Fast getUser fallback timed out or failed:", e);
+                }
+            }
+
+            // 5. Mock User & Admin Recovery (If session is lost but mock data exists)
+            if (!user && hasEmail) {
+                console.log("Recovering mock session for:", hasEmail);
+                const userType = localStorage.getItem('user_type') || 'client';
+                const userName = localStorage.getItem('user_name') || 'Usuário';
+                return {
+                    id: localStorage.getItem('user_id') || '00000000-0000-0000-0000-000000000000',
+                    email: hasEmail === 'ZeroZynapses' ? 'lara.cabeleireira@teste.com' : hasEmail,
+                    user_metadata: {
+                        full_name: userName,
+                        user_type: userType
+                    }
+                };
+            }
+            
+            if (user) {
+                if (user.id && localStorage.getItem('user_id') !== user.id) {
+                    console.log("Auto-healing localStorage cache: updating user_id to", user.id);
+                    localStorage.setItem('user_id', user.id);
+                }
+                if (user.email && localStorage.getItem('user_email') !== user.email) {
+                    localStorage.setItem('user_email', user.email);
                 }
             }
             
@@ -378,7 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 localStorage.setItem('user_type', profile.user_type || 'client');
                 localStorage.setItem('user_name', profile.full_name || user.email);
-                localStorage.setItem('user_photo', profile.avatar_url || '');
+                localStorage.setItem('user_photo', profile.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || '');
                 localStorage.setItem('user_city', profile.city || 'São Paulo, SP');
                 localStorage.setItem('user_address', profile.address || '');
                 localStorage.setItem('user_points', profile.points !== null ? profile.points : 10);
@@ -400,6 +427,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     id: user.id,
                     full_name: isZero ? 'ZeroZynapses' : (user.user_metadata.full_name || user.email),
                     user_type: isZero ? 'admin' : (user.user_metadata.user_type || 'client'),
+                    avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
                     points: 10
                 };
                 supabaseClient.from('profiles').insert([newProfile]).then(() => {
@@ -546,6 +574,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const passEl = document.getElementById('login-password');
                 if (passEl) passEl.value = savedPass;
             }
+            
+            // Restore visibility of elements in case they were hidden previously
+            const btnLogin = document.getElementById('btn-login-submit');
+            if (btnLogin) {
+                btnLogin.style.display = 'block';
+                btnLogin.disabled = false;
+                btnLogin.textContent = 'Entrar';
+            }
+            const toggleBtn = document.querySelector('#login .btn-toggle-password, #login .toggle-password');
+            if (toggleBtn) {
+                toggleBtn.style.display = 'block';
+            }
+            const googleBtn = document.getElementById('google-login-container');
+            if (googleBtn) {
+                googleBtn.style.display = 'block';
+            }
         }
     }
 
@@ -630,16 +674,16 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'comum_prof', name: 'Plano Essencial', price: 29.90, features: ['Visibilidade Básica', 'Agenda Digital', '3 Serviços no Catálogo'] },
             { id: 'plus_prof', name: 'Plano Plus', price: 59.90, features: ['Destaque na Busca', 'Até 5 Serviços no Catálogo', 'Relatórios Financeiros', 'Suporte Prioritário'] }
         ] : [
-            { id: 'comum_client', name: 'Plano Comum', price: 0, features: ['Busca de Profissionais', 'Agendamento Online', 'Histórico'] },
+            { id: 'comum_client', name: 'Plano Essencial', price: 0, features: ['Busca de Profissionais', 'Agendamento Online', 'Histórico'] },
             { id: 'plus_client', name: 'Plano Plus', price: 19.90, features: ['Cashback em Pontos', 'Descontos Exclusivos', 'Suporte VIP'] }
         ];
 
-        let currentPlanName = localStorage.getItem('user_subscription_plan') || (type === 'professional' ? 'Plano Grátis' : 'Plano Comum');
-        if (currentPlanName === 'Free' || currentPlanName === 'Plano Comum') {
+        let currentPlanName = localStorage.getItem('user_subscription_plan') || (type === 'professional' ? 'Plano Grátis' : 'Plano Essencial');
+        if (currentPlanName === 'Free' || currentPlanName === 'Plano Comum' || currentPlanName === 'Plano Essencial') {
             if (type === 'professional') {
                 currentPlanName = 'Plano Grátis';
             } else {
-                currentPlanName = 'Plano Comum';
+                currentPlanName = 'Plano Essencial';
             }
         }
 
@@ -778,7 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'comum_prof', name: 'Plano Essencial', price: 29.90 },
             { id: 'plus_prof', name: 'Plano Plus', price: 59.90 }
         ] : [
-            { id: 'comum_client', name: 'Plano Comum', price: 0 },
+            { id: 'comum_client', name: 'Plano Essencial', price: 0 },
             { id: 'plus_client', name: 'Plano Plus', price: 19.90 }
         ];
         const planObj = plans.find(p => p.id === window.selectedPlan);
@@ -890,6 +934,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeSession || localUser) {
             console.log("Session verified (Local or Supabase)");
             
+            // Safety check: verify if profile still exists in profiles table. If deleted by admin, force logout.
+            const localUserId = localStorage.getItem('user_id');
+            const localUserType = localStorage.getItem('user_type');
+            if (localUserId && localUserId !== '00000000-0000-0000-0000-000000000000' && localUserType !== 'admin') {
+                try {
+                    const { data: profExists, error: profErr } = await supabaseClient
+                        .from('profiles')
+                        .select('id')
+                        .eq('id', localUserId)
+                        .maybeSingle();
+                    
+                    if (!profErr && !profExists) {
+                        console.log("Account was deleted or deactivated by support admin. Logging out.");
+                        alert("⚠️ Sua conta foi excluída ou desativada pelo suporte técnico.");
+                        localStorage.clear();
+                        window.location.hash = '#login';
+                        location.reload();
+                        return;
+                    }
+                } catch (checkErr) {
+                    console.warn("Deleted account check failed:", checkErr);
+                }
+            }
+            
             // Trigger database cards syncing on load
             syncDatabaseProfiles();
             setupProfilesRealtimeSubscription();
@@ -920,6 +988,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Render Functions ---
     function init() {
         console.log("🛠️ init() started...");
+        window.updateUserUI = updateUserUI; // Expose globally for instant Google avatar render
+        updateAdminAnnouncements();
         renderCategories();
         renderFeatured();
         renderSearchProfessionals();
@@ -935,6 +1005,34 @@ document.addEventListener('DOMContentLoaded', () => {
         setupGoogleLogin();
         console.log("✅ base renders done.");
 
+    }
+
+    // --- Dynamic Resilient Date-Aware Admin Announcements ---
+    function updateAdminAnnouncements() {
+        const announcementContainer = document.getElementById('dynamic-launch-announcement');
+        if (!announcementContainer) return;
+        
+        const today = new Date();
+        // Lançamento programado para: 24 de Maio de 2026
+        const launchDate = new Date(2026, 4, 24); // Mês é 0-indexed, então 4 = Maio
+        
+        // Zera as horas para comparar apenas os dias
+        today.setHours(0,0,0,0);
+        launchDate.setHours(0,0,0,0);
+        
+        if (today < launchDate) {
+            announcementContainer.innerHTML = `
+                <p style="margin: 0 0 0.4rem 0; font-size: 0.9rem; color: #eee; font-weight: 800;">🚀 Lançamento Oficial Confirmado!</p>
+                <p style="margin: 0 0 0.4rem 0; font-size: 0.8rem; color: #aaa; line-height: 1.4;">A contagem regressiva começou! O aplicativo oficial do **Zero** será lançado no dia **24 de Maio**. Prepare-se para experimentar a maior rede regional de beleza.</p>
+                <small style="color: var(--primary-accent); font-weight: bold;">Por: Admin • Lançamento em breve</small>
+            `;
+        } else {
+            announcementContainer.innerHTML = `
+                <p style="margin: 0 0 0.4rem 0; font-size: 0.9rem; color: #eee; font-weight: 800;">🎉 O aplicativo Zero foi Lançado!</p>
+                <p style="margin: 0 0 0.4rem 0; font-size: 0.8rem; color: #aaa; line-height: 1.4;">É oficial! A plataforma **Zero** está oficialmente no ar e disponível para conectar os melhores profissionais e clientes. Cadastre-se e aproveite!</p>
+                <small style="color: #10B981; font-weight: bold;">Por: Admin • Já lançado</small>
+            `;
+        }
     }
 
     async function handleLoginSubmit() {
@@ -961,8 +1059,27 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const toggleBtn = document.querySelector('#login .btn-toggle-password, #login .toggle-password');
+        const googleBtn = document.getElementById('google-login-container');
+
+        const hideLoginControls = () => {
+            if (btnLogin) btnLogin.style.display = 'none';
+            if (toggleBtn) toggleBtn.style.display = 'none';
+            if (googleBtn) googleBtn.style.display = 'none';
+        };
+
+        const showLoginControls = () => {
+            if (btnLogin) {
+                btnLogin.style.display = 'block';
+                btnLogin.textContent = origText;
+                btnLogin.disabled = false;
+            }
+            if (toggleBtn) toggleBtn.style.display = 'block';
+            if (googleBtn) googleBtn.style.display = 'block';
+        };
+
         if (email === 'ZeroZynapses' && password === 'ZP@147896325@ZP') {
-            if (btnLogin) { btnLogin.textContent = 'Entrando...'; btnLogin.disabled = true; }
+            hideLoginControls();
             
             // Fixed admin ID that matches the profiles table entry for ZeroZynapses
             const ADMIN_ID = 'e33bdd17-f6bc-4c72-82cf-c3f76124aca0';
@@ -1011,7 +1128,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (btnLogin) { btnLogin.textContent = 'Entrando...'; btnLogin.disabled = true; }
+        hideLoginControls();
         if (errorEl) errorEl.style.display = 'none';
 
         try {
@@ -1024,7 +1141,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     errorEl.textContent = '⚠️ ' + (error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : error.message);
                     errorEl.style.display = 'block';
                 }
-                if (btnLogin) { btnLogin.textContent = origText; btnLogin.disabled = false; }
+                showLoginControls();
             } else {
                 console.log("✅ Login manual bem sucedido.", data.user.email);
                 const { data: profile } = await supabaseClient.from('profiles').select('*').eq('id', data.user.id).single();
@@ -1040,7 +1157,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {
             console.error("🔥 Login crash:", err);
-            if (btnLogin) { btnLogin.textContent = origText; btnLogin.disabled = false; }
+            showLoginControls();
         }
     }
     
@@ -1096,24 +1213,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             }
         } else {
-            // Render real Google OAuth button tags for production domain
-            container.innerHTML = `
-                <div id="g_id_onload"
-                     data-client_id="348192418109-gbg9quomppt6upi5bplu7t7nohnah5ue.apps.googleusercontent.com"
-                     data-context="signin"
-                     data-ux_mode="popup"
-                     data-callback="handleCredentialResponse"
-                     data-auto_prompt="false">
-                </div>
-                <div class="g_id_signin"
-                     data-type="standard"
-                     data-shape="rectangular"
-                     data-theme="filled_black"
-                     data-text="signin_with"
-                     data-size="large"
-                     data-logo_alignment="left">
-                </div>
-            `;
+            // Render real Google OAuth button programmatically to ensure dynamic parsing works flawlessly
+            if (window.google && window.google.accounts) {
+                try {
+                    window.google.accounts.id.initialize({
+                        client_id: "348192418109-gbg9quomppt6upi5bplu7t7nohnah5ue.apps.googleusercontent.com",
+                        callback: window.handleCredentialResponse,
+                        context: "signin",
+                        ux_mode: "popup",
+                        auto_prompt: false
+                    });
+                    
+                    container.innerHTML = '<div id="google-signin-btn-anchor" style="display: flex; justify-content: center; width: 100%;"></div>';
+                    
+                    window.google.accounts.id.renderButton(
+                        document.getElementById('google-signin-btn-anchor'),
+                        {
+                            type: "standard",
+                            shape: "rectangular",
+                            theme: "filled_black",
+                            text: "signin_with",
+                            size: "large",
+                            logo_alignment: "left",
+                            width: 240
+                        }
+                    );
+                    console.log("✅ Google Sign-In programmatically initialized and rendered.");
+                } catch (err) {
+                    console.error("❌ Error programmatically rendering Google Sign-In button:", err);
+                }
+            } else {
+                console.log("⏳ Google Client SDK not loaded yet. Retrying in 200ms...");
+                setTimeout(setupGoogleLogin, 200);
+            }
         }
     }
 
@@ -1183,6 +1315,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const phoneNum = document.getElementById('client-phone').value;
         const formattedPhone = ddd && phoneNum ? `(${ddd}) ${phoneNum}` : '';
 
+        // Validação de email duplicado no banco de dados (Regra: Permitir somente uma conta por email)
+        try {
+            const { data: existingProfiles, error: checkError } = await supabaseClient
+                .from('profiles')
+                .select('id')
+                .eq('email', email.trim().toLowerCase());
+            
+            if (!checkError && existingProfiles && existingProfiles.length > 0) {
+                alert('⚠️ Este e-mail já está cadastrado em outra conta. Por favor, utilize outro e-mail.');
+                if (btn) {
+                    btn.innerText = "Concluir Cadastro";
+                    btn.disabled = false;
+                }
+                return;
+            }
+        } catch (checkErr) {
+            console.warn("Email uniqueness check skipped:", checkErr);
+        }
+
         // Validação obrigatória da foto de perfil
         const preview = document.getElementById('client-photo-preview');
         const hasPhoto = preview && preview.querySelector('img') !== null;
@@ -1222,6 +1373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     await supabaseClient.from('profiles').upsert({
                         id: data.user.id,
                         full_name: fullName,
+                        email: email.trim().toLowerCase(), // Save email!
                         user_type: 'client',
                         city,
                         address,
@@ -1276,6 +1428,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const phoneNum = document.getElementById('prof-phone').value;
         const formattedPhone = ddd && phoneNum ? `(${ddd}) ${phoneNum}` : '';
 
+        // Validação de email duplicado no banco de dados (Regra: Permitir somente uma conta por email)
+        try {
+            const { data: existingProfiles, error: checkError } = await supabaseClient
+                .from('profiles')
+                .select('id')
+                .eq('email', email.trim().toLowerCase());
+            
+            if (!checkError && existingProfiles && existingProfiles.length > 0) {
+                alert('⚠️ Este e-mail já está cadastrado em outra conta. Por favor, utilize outro e-mail.');
+                if (btn) {
+                    btn.innerText = "Finalizar Cadastro";
+                    btn.disabled = false;
+                }
+                return;
+            }
+        } catch (checkErr) {
+            console.warn("Email uniqueness check skipped:", checkErr);
+        }
+
         // Validação obrigatória da foto de perfil profissional
         const preview = document.getElementById('prof-photo-preview');
         const hasPhoto = preview && preview.querySelector('img') !== null;
@@ -1326,6 +1497,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     await supabaseClient.from('profiles').upsert({
                         id: data.user.id,
                         full_name: displayName,
+                        email: email.trim().toLowerCase(), // Save email!
                         user_type: 'professional',
                         category,
                         city,
@@ -1966,16 +2138,30 @@ document.addEventListener('DOMContentLoaded', () => {
             // Set current plan text
             const planEl = document.getElementById('user-plan-display');
             if (planEl) {
-                let defaultPlan = type === 'professional' ? 'Plano Grátis' : 'Plano Comum';
+                let defaultPlan = type === 'professional' ? 'Plano Grátis' : 'Plano Essencial';
                 let currentPlan = localStorage.getItem('user_subscription_plan');
-                if (!currentPlan || currentPlan === 'Free' || currentPlan === 'Plano Comum') {
+                if (!currentPlan || currentPlan === 'Free' || currentPlan === 'Plano Comum' || currentPlan === 'Plano Essencial') {
                     if (type === 'professional') {
                         currentPlan = 'Plano Grátis';
                     } else {
-                        currentPlan = 'Plano Comum';
+                        currentPlan = 'Plano Essencial';
                     }
                 }
                 planEl.innerText = currentPlan;
+            }
+
+            // Update Products Lock visual indicators
+            const lockEl = document.getElementById('dash-products-lock');
+            const descEl = document.getElementById('dash-products-desc');
+            if (descEl) {
+                const plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
+                const isPlus = plan === 'Plano Plus' || type === 'admin';
+                if (isPlus) {
+                    descEl.innerHTML = 'Vitrine ativa ✨';
+                    if (lockEl) lockEl.style.display = 'none';
+                } else {
+                    descEl.innerHTML = 'Gerenciar Loja <span id="dash-products-lock">🔒</span>';
+                }
             }
  
             // Change "Planos" button to "Pontos" for ADM
@@ -1997,20 +2183,55 @@ document.addEventListener('DOMContentLoaded', () => {
         renderProLocationStats();
     }
  
-    function renderClientHomeAgenda() {
+    async function renderClientHomeAgenda() {
         const container = document.getElementById('client-home-agenda');
         if (!container) return;
-        const apps = JSON.parse(localStorage.getItem('user_appointments') || '[]');
-        if (apps.length === 0) {
+        
+        container.innerHTML = '<p style="color:#888; text-align:center; padding:1rem; font-size:0.85rem;">Carregando...</p>';
+        
+        try {
+            const clientId = localStorage.getItem('user_id');
+            const userType = localStorage.getItem('user_type') || 'client';
+            if (!clientId) {
+                container.innerHTML = '<p class="empty-state">Nenhum horário marcado.</p>';
+                return;
+            }
+            
+            const columnFilter = userType === 'professional' ? 'professional_id' : 'client_id';
+            const { data, error } = await supabaseClient
+                .from('appointments')
+                .select('*, client:client_id(full_name), professional:professional_id(full_name)')
+                .eq(columnFilter, clientId)
+                .neq('status', 'cancelled')
+                .order('date', { ascending: true })
+                .order('time', { ascending: true });
+                
+            if (error) throw error;
+            
+            const apps = data || [];
+            if (apps.length === 0) {
+                container.innerHTML = '<p class="empty-state">Nenhum horário marcado.</p>';
+                return;
+            }
+            
+            container.innerHTML = apps.map(a => {
+                const partnerName = userType === 'professional' ? (a.client?.full_name || 'Cliente') : (a.professional?.full_name || 'Profissional');
+                const dateParts = a.date.split('-');
+                const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : a.date;
+                return `
+                    <div style="background:var(--card-bg); padding:1rem; border-radius:12px; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border);">
+                        <div>
+                            <div style="font-weight:700; color:var(--text);">${partnerName}</div>
+                            <div style="font-size:0.7rem; color:var(--text-muted);">${formattedDate} - ${a.service_name || 'Serviço'}</div>
+                        </div>
+                        <div style="font-weight:800; color:var(--text);">${a.time}</div>
+                    </div>
+                `;
+            }).join('');
+        } catch (err) {
+            console.error("Erro ao carregar agendamentos:", err);
             container.innerHTML = '<p class="empty-state">Nenhum horário marcado.</p>';
-            return;
         }
-        container.innerHTML = apps.map(a => `
-            <div style="background:#1a1a1a; padding:1rem; border-radius:12px; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center; border:1px solid #333;">
-                <div><div style="font-weight:700;">Agendamento</div><div style="font-size:0.7rem; color:#666;">${a.date}</div></div>
-                <div style="font-weight:800; color:#fff;">${a.time}</div>
-            </div>
-        `).join('');
     }
  
     function renderHomeSpending() {
@@ -2077,20 +2298,58 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
-    function renderClientAgenda() {
+    async function renderClientAgenda() {
         const container = document.getElementById('client-agenda-list');
         if (!container) return;
-        const apps = JSON.parse(localStorage.getItem('user_appointments') || '[]');
-        if (apps.length === 0) {
+        
+        container.innerHTML = '<p style="color:#888; text-align:center; padding: 2rem; font-size:0.85rem;">Carregando agendamentos...</p>';
+        
+        try {
+            const clientId = localStorage.getItem('user_id');
+            const userType = localStorage.getItem('user_type') || 'client';
+            if (!clientId) {
+                container.innerHTML = '<p style="color:#555; text-align:center; padding: 2rem;">Nenhum agendamento ativo.</p>';
+                return;
+            }
+            
+            const columnFilter = userType === 'professional' ? 'professional_id' : 'client_id';
+            const { data, error } = await supabaseClient
+                .from('appointments')
+                .select('*, client:client_id(full_name), professional:professional_id(full_name)')
+                .eq(columnFilter, clientId)
+                .neq('status', 'cancelled')
+                .order('date', { ascending: true })
+                .order('time', { ascending: true });
+                
+            if (error) throw error;
+            
+            const apps = data || [];
+            if (apps.length === 0) {
+                container.innerHTML = '<p style="color:#555; text-align:center; padding: 2rem;">Nenhum agendamento ativo.</p>';
+                return;
+            }
+            
+            container.innerHTML = apps.map(a => {
+                const partnerName = userType === 'professional' ? (a.client?.full_name || 'Cliente') : (a.professional?.full_name || 'Profissional');
+                const dateParts = a.date.split('-');
+                const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : a.date;
+                return `
+                    <div style="background:var(--card-bg); padding:1rem; border-radius:12px; border:1px solid var(--border); margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight:700; color:var(--text);">${partnerName}</div>
+                            <div style="font-size:0.8rem; color:var(--text-muted);">${a.service_name || 'Serviço'}</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-weight:800; color:var(--text);">${a.time}</div>
+                            <div style="font-size:0.7rem; color:var(--text-muted);">${formattedDate}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (err) {
+            console.error("Erro ao carregar agendamentos:", err);
             container.innerHTML = '<p style="color:#555; text-align:center; padding: 2rem;">Nenhum agendamento ativo.</p>';
-            return;
         }
-        container.innerHTML = apps.map(a => `
-            <div style="background:#111; padding:1rem; border-radius:12px; border:1px solid #222; margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items: center;">
-                <div><div style="font-weight:700;">${a.prof}</div><div style="font-size:0.8rem; color:#888;">Serviço Contratado</div></div>
-                <div style="text-align:right;"><div style="font-weight:800; color:#fff;">${a.time}</div><div style="font-size:0.7rem; color:#444;">${a.date}</div></div>
-            </div>
-        `).join('');
     }
 
     async function renderFinanceChart() {
@@ -3250,6 +3509,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
     }
 
     // --- Helper Logic ---
+    let activeDayAppointments = [];
+
     function renderTimeSlots(selectedDate) {
         const select = document.getElementById('agendamento-hora');
         if (!select) return;
@@ -3277,28 +3538,46 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         const today = new Date().toISOString().split('T')[0];
         dateInput.setAttribute('min', today);
         
-        dateInput.onchange = (e) => {
-            const val = e.target.value;
+        dateInput.onchange = async (e) => {
+            const val = e.target.value; // YYYY-MM-DD
             if (val) {
+                const select = document.getElementById('agendamento-hora');
+                if (select) select.innerHTML = '<option value="">Carregando horários disponíveis...</option>';
+                
+                try {
+                    const profId = window.selectedProfId || 'mock-prof-id';
+                    const { data, error } = await supabaseClient
+                        .from('appointments')
+                        .select('time')
+                        .eq('professional_id', profId)
+                        .eq('date', val)
+                        .neq('status', 'cancelled');
+                        
+                    if (error) throw error;
+                    activeDayAppointments = data || [];
+                } catch (err) {
+                    console.error("Erro ao carregar conflitos do Supabase:", err);
+                    activeDayAppointments = [];
+                }
+
                 const [year, month, day] = val.split('-');
                 renderTimeSlots(`${day}/${month}/${year}`);
             } else {
+                activeDayAppointments = [];
                 renderTimeSlots('');
             }
         };
     }
 
-    function isSlotConflicted(newSlot, newDate, profId) {
+    function isSlotConflicted(newSlot, newDate) {
         if (!newDate) return false;
-        const apps = JSON.parse(localStorage.getItem('user_appointments') || '[]');
         const [nH, nM] = newSlot.split(':').map(Number);
         const nT = nH * 60 + nM;
-        return apps.some(a => {
-            // Só conflita se for o mesmo profissional e o mesmo dia
-            if (a.date !== newDate || a.profId !== profId) return false;
+        return activeDayAppointments.some(a => {
+            if (!a.time) return false;
             const [h, m] = a.time.split(':').map(Number);
             const t = h * 60 + m;
-            return Math.abs(nT - t) < 30;
+            return Math.abs(nT - t) < 30; // Conflito de intervalo de 30 minutos
         });
     }
 
@@ -4203,7 +4482,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
     // Global Password Toggle Logic
     const togglePasswordVisibility = (e) => {
-        const toggleBtn = e.target.closest('.toggle-password');
+        const toggleBtn = e.target.closest('.btn-toggle-password, .toggle-password');
         if (toggleBtn) {
             e.preventDefault();
             e.stopPropagation();
@@ -4213,17 +4492,16 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             if (input) {
                 if (input.type === 'password') {
                     input.type = 'text';
-                    toggleBtn.textContent = '🔒';
+                    toggleBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon-svg"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
                 } else {
                     input.type = 'password';
-                    toggleBtn.textContent = '👁️';
+                    toggleBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon-svg"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
                 }
             }
         }
     };
 
     document.addEventListener('click', togglePasswordVisibility);
-    document.addEventListener('mousedown', togglePasswordVisibility);
 
     // --- Map Picker Logic ---
     let pickerMap;
@@ -4615,6 +4893,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
         if (recents.length > 0) {
             recentContainer.style.display = 'block';
+            const toggleBtn = document.getElementById('btn-toggle-recent');
+            if (toggleBtn) toggleBtn.style.display = 'flex';
             recentList.innerHTML = recents.map(p => {
                 const avatarHtml = p.avatar_url 
                     ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
@@ -4635,20 +4915,67 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             startDynamicServicesRotation(recents);
         } else {
             recentContainer.style.display = 'none';
+            const toggleBtn = document.getElementById('btn-toggle-recent');
+            if (toggleBtn) toggleBtn.style.display = 'none';
         }
     }
 
     window.searchSortMode = 'proximity';
+    let searchSortTimeout = null;
 
     window.toggleSearchSortMode = function() {
         const iconEl = document.getElementById('search-sort-icon');
+        const badgeIcon = document.getElementById('search-sort-badge-icon');
+        const badgeText = document.getElementById('search-sort-badge-text');
+        const badgeEl = document.getElementById('search-sort-badge');
+        
         if (window.searchSortMode === 'proximity') {
             window.searchSortMode = 'rating';
             if (iconEl) iconEl.innerText = '⭐';
+            if (badgeIcon) badgeIcon.innerText = '⭐';
+            if (badgeText) badgeText.innerText = 'Estrelas';
+            if (badgeEl) {
+                badgeEl.style.background = 'rgba(251, 191, 36, 0.95)';
+                badgeEl.style.borderColor = 'rgba(251, 191, 36, 0.4)';
+                badgeEl.style.color = '#000';
+            }
+        } else if (window.searchSortMode === 'rating') {
+            window.searchSortMode = 'price';
+            if (iconEl) iconEl.innerText = '💵';
+            if (badgeIcon) badgeIcon.innerText = '💵';
+            if (badgeText) badgeText.innerText = 'Preço';
+            if (badgeEl) {
+                badgeEl.style.background = 'rgba(16, 185, 129, 0.95)';
+                badgeEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                badgeEl.style.color = '#fff';
+            }
         } else {
             window.searchSortMode = 'proximity';
             if (iconEl) iconEl.innerText = '📍';
+            if (badgeIcon) badgeIcon.innerText = '📍';
+            if (badgeText) badgeText.innerText = 'Proximidade';
+            if (badgeEl) {
+                badgeEl.style.background = 'rgba(168, 85, 247, 0.95)';
+                badgeEl.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+                badgeEl.style.color = '#fff';
+            }
         }
+
+        // Show the temporary floating guide
+        if (badgeEl) {
+            badgeEl.style.opacity = '1';
+            badgeEl.style.transform = 'translate(-50%, -50%) scale(1)';
+            
+            // Clear any existing float-out timeout
+            if (searchSortTimeout) clearTimeout(searchSortTimeout);
+            
+            // Hide/float out after 2 seconds
+            searchSortTimeout = setTimeout(() => {
+                badgeEl.style.opacity = '0';
+                badgeEl.style.transform = 'translate(-50%, -140%) scale(0.85)';
+            }, 2000);
+        }
+
         if (typeof window.filterAndRenderSearch === 'function') {
             window.filterAndRenderSearch();
         } else {
@@ -4656,7 +4983,432 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         }
     };
 
+    window.toggleRecentDrawer = function() {
+        const drawer = document.getElementById('shared-drawer-container');
+        const recentInner = document.getElementById('recent-professionals-container');
+        const productsInner = document.getElementById('plus-products-content-inner');
+        
+        const arrowRecent = document.getElementById('recent-toggle-arrow');
+        const arrowProducts = document.getElementById('products-toggle-arrow');
+        
+        const btnRecent = document.getElementById('btn-toggle-recent');
+        const btnProducts = document.getElementById('btn-toggle-products');
+        
+        const ticker = document.getElementById('products-ticker-container');
+        
+        if (!drawer || !recentInner || !productsInner || !arrowRecent || !btnRecent) return;
+
+        // If drawer is expanded AND we are currently showing "Novo por Aqui", collapse it!
+        const isShowingRecent = drawer.style.maxHeight && drawer.style.maxHeight !== '0px' && recentInner.style.display === 'block';
+
+        if (isShowingRecent) {
+            drawer.style.maxHeight = '0px';
+            drawer.style.opacity = '0';
+            drawer.style.transform = 'translateY(25px)';
+            
+            arrowRecent.style.transform = 'rotate(0deg)';
+            btnRecent.style.background = '#000000';
+            btnRecent.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+            btnRecent.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+        } else {
+            // Switch content to "Novo por Aqui"
+            recentInner.style.display = 'block';
+            productsInner.style.display = 'none';
+
+            // Expand
+            drawer.style.maxHeight = '500px';
+            drawer.style.opacity = '1';
+            drawer.style.transform = 'translateY(0px)';
+            
+            // Set styles for Recent button active
+            arrowRecent.style.transform = 'rotate(180deg)';
+            btnRecent.style.background = 'rgba(168, 85, 247, 0.1)';
+            btnRecent.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+            btnRecent.style.boxShadow = '0 8px 25px rgba(168, 85, 247, 0.2)';
+
+            // Reset Products button inactive
+            if (arrowProducts) arrowProducts.style.transform = 'rotate(0deg)';
+            if (btnProducts) {
+                btnProducts.style.background = '#000000';
+                btnProducts.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+                btnProducts.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+            }
+            
+            // Restore products ticker container if it was hidden
+            if (ticker) {
+                ticker.style.maxHeight = '38px';
+                ticker.style.opacity = '1';
+                ticker.style.padding = '8px 12px';
+                ticker.style.marginTop = '0px';
+            }
+        }
+    };
+
+    // --- PLUS PRODUCTS MANAGEMENT SYSTEM (PLANO PLUS) ---
+    const defaultMockProducts = [
+        {
+            id: 'mock-p1',
+            professional_id: 'mock-pro-id-joao',
+            professional_name: 'João Silva',
+            name: 'Pomada Modeladora Matte Pro',
+            description: 'Fixação extra forte com acabamento 100% opaco e seco para modelar com alta durabilidade.',
+            price: 49.90,
+            image_url: 'https://images.unsplash.com/photo-1621607511815-684b45512257?w=150&auto=format&fit=crop'
+        },
+        {
+            id: 'mock-p2',
+            professional_id: 'mock-pro-id-joao',
+            professional_name: 'João Silva',
+            name: 'Óleo Nutritivo para Barba Premium',
+            description: 'Composto por óleos essenciais de argan e coco que amaciam, perfumam e hidratam profundamente.',
+            price: 39.90,
+            image_url: 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?w=150&auto=format&fit=crop'
+        },
+        {
+            id: 'mock-p3',
+            professional_id: 'mock-pro-id-carlos',
+            professional_name: 'Carlos Barber',
+            name: 'Shampoo Purificante Fresh Mentol',
+            description: 'Sensação refrescante imediata, remove a oleosidade excessiva e previne a caspa.',
+            price: 34.90,
+            image_url: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?w=150&auto=format&fit=crop'
+        },
+        {
+            id: 'mock-p4',
+            professional_id: 'mock-pro-id-joao',
+            professional_name: 'João Silva',
+            name: 'Gel Cola Estilização Extra Forte',
+            description: 'Brilho molhado com mega fixação de longa duração para penteados estruturados e modernos.',
+            price: 22.00,
+            image_url: 'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=150&auto=format&fit=crop'
+        },
+        {
+            id: 'mock-p5',
+            professional_id: 'mock-pro-id-carlos',
+            professional_name: 'Carlos Barber',
+            name: 'Creme de Barbear Hidratante Suave',
+            description: 'Fórmula enriquecida com extrato de camomila e aloe vera que desliza fácil e reduz a vermelhidão.',
+            price: 29.90,
+            image_url: 'https://images.unsplash.com/photo-1620331311520-246422fd82f9?w=150&auto=format&fit=crop'
+        },
+        {
+            id: 'mock-p6',
+            professional_id: 'mock-pro-id-carlos',
+            professional_name: 'Carlos Barber',
+            name: 'Tônico Capilar Crescimento Acelerado',
+            description: 'Ativa a circulação do bulbo capilar, nutre a raiz e estimula o nascimento de fios mais fortes.',
+            price: 65.00,
+            image_url: 'https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=150&auto=format&fit=crop'
+        },
+        {
+            id: 'mock-p7',
+            professional_id: 'mock-pro-id-carlos',
+            professional_name: 'Carlos Barber',
+            name: 'Pente Profissional Anti-Frizz Madeira',
+            description: 'Feito de madeira de lei selecionada. Dentes arredondados que desembaraçam sem agredir a pele.',
+            price: 19.90,
+            image_url: 'https://images.unsplash.com/photo-1590156546746-c23305398e13?w=150&auto=format&fit=crop'
+        }
+    ];
+
+    window.toggleProductsDrawer = function() {
+        const drawer = document.getElementById('shared-drawer-container');
+        const recentInner = document.getElementById('recent-professionals-container');
+        const productsInner = document.getElementById('plus-products-content-inner');
+        
+        const arrowRecent = document.getElementById('recent-toggle-arrow');
+        const arrowProducts = document.getElementById('products-toggle-arrow');
+        
+        const btnRecent = document.getElementById('btn-toggle-recent');
+        const btnProducts = document.getElementById('btn-toggle-products');
+        
+        const ticker = document.getElementById('products-ticker-container');
+        
+        if (!drawer || !recentInner || !productsInner || !arrowProducts || !btnProducts) return;
+
+        // If drawer is expanded AND we are currently showing "Vitrine", collapse it!
+        const isShowingProducts = drawer.style.maxHeight && drawer.style.maxHeight !== '0px' && productsInner.style.display === 'flex';
+
+        if (isShowingProducts) {
+            drawer.style.maxHeight = '0px';
+            drawer.style.opacity = '0';
+            drawer.style.transform = 'translateY(25px)';
+            
+            arrowProducts.style.transform = 'rotate(0deg)';
+            btnProducts.style.background = '#000000';
+            btnProducts.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+            btnProducts.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+            
+            // Show the scrolling ticker
+            if (ticker) {
+                ticker.style.maxHeight = '38px';
+                ticker.style.opacity = '1';
+                ticker.style.padding = '8px 12px';
+                ticker.style.marginTop = '0px';
+            }
+        } else {
+            // Switch content to "Vitrine"
+            recentInner.style.display = 'none';
+            productsInner.style.display = 'flex';
+
+            // Expand
+            drawer.style.maxHeight = '500px';
+            drawer.style.opacity = '1';
+            drawer.style.transform = 'translateY(0px)';
+            
+            // Set styles for Products button active
+            arrowProducts.style.transform = 'rotate(180deg)';
+            btnProducts.style.background = 'rgba(168, 85, 247, 0.1)';
+            btnProducts.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+            btnProducts.style.boxShadow = '0 8px 25px rgba(168, 85, 247, 0.2)';
+
+            // Reset Recent button inactive
+            if (arrowRecent) arrowRecent.style.transform = 'rotate(0deg)';
+            if (btnRecent) {
+                btnRecent.style.background = '#000000';
+                btnRecent.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+                btnRecent.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+            }
+            
+            // Hide the scrolling ticker
+            if (ticker) {
+                ticker.style.maxHeight = '0px';
+                ticker.style.opacity = '0';
+                ticker.style.padding = '0px 12px';
+                ticker.style.marginTop = '-8px';
+            }
+        }
+    };
+
+    window.openProductsManager = function() {
+        const type = localStorage.getItem('user_type') || 'client';
+        const plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
+        
+        if (type !== 'professional' && type !== 'admin') {
+            return showSuccessModal('Acesso Restrito 🛍️', 'Apenas profissionais cadastrados podem gerenciar catálogo de produtos!');
+        }
+
+        const isPlus = plan === 'Plano Plus' || type === 'admin';
+        if (!isPlus) {
+            return showSuccessModal(
+                'Recurso Exclusivo Plano Plus 🛍️', 
+                'A Vitrine de Produtos está disponível apenas para parceiros do Plano Plus! Faça o upgrade da sua assinatura na aba "Planos" e comece a vender hoje mesmo!'
+            );
+        }
+
+        const overlay = document.getElementById('produtos-overlay');
+        if (overlay) {
+            overlay.classList.add('active');
+            renderProductsManager();
+        }
+    };
+
+    window.hideProductsManager = function() {
+        const overlay = document.getElementById('produtos-overlay');
+        if (overlay) overlay.classList.remove('active');
+    };
+
+    window.openAddProductForm = function() {
+        const modal = document.getElementById('add-product-modal');
+        if (modal) modal.classList.add('active');
+    };
+
+    window.closeAddProductForm = function() {
+        const modal = document.getElementById('add-product-modal');
+        if (modal) modal.classList.remove('active');
+    };
+
+    window.saveNewProduct = async function(e) {
+        if (e) e.preventDefault();
+        const nameVal = document.getElementById('prod-name').value.trim();
+        const descVal = document.getElementById('prod-desc').value.trim();
+        const priceVal = parseFloat(document.getElementById('prod-price').value);
+        const imgVal = document.getElementById('prod-img').value.trim();
+
+        if (!nameVal || !descVal || isNaN(priceVal)) {
+            return alert("Por favor, preencha os campos obrigatórios.");
+        }
+
+        const currentUserId = localStorage.getItem('user_id') || 'mock-id';
+        const userName = localStorage.getItem('user_name') || 'Profissional Plus';
+
+        const newProd = {
+            id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
+            professional_id: currentUserId,
+            professional_name: userName,
+            name: nameVal,
+            description: descVal,
+            price: priceVal,
+            image_url: imgVal || 'https://images.unsplash.com/photo-1621607511815-684b45512257?w=150&auto=format&fit=crop',
+            created_at: new Date().toISOString()
+        };
+
+        // Try to insert in Supabase database
+        try {
+            const { error } = await supabaseClient
+                .from('products')
+                .insert([
+                    {
+                        professional_id: currentUserId,
+                        name: nameVal,
+                        description: descVal,
+                        price: priceVal,
+                        image_url: newProd.image_url
+                    }
+                ]);
+            if (error) console.warn("[Products] Supabase insert skipped or failed:", error.message);
+        } catch (err) {
+            console.warn("[Products] Supabase offline/missing table, fallback to LocalStorage", err);
+        }
+
+        // Always save to localStorage to ensure absolute success
+        const localProducts = JSON.parse(localStorage.getItem('user_products') || '[]');
+        localProducts.push(newProd);
+        localStorage.setItem('user_products', JSON.stringify(localProducts));
+
+        // UI Reset
+        document.getElementById('add-product-form').reset();
+        window.closeAddProductForm();
+        renderProductsManager();
+        window.loadAndRenderShowcaseProducts();
+        showSuccessModal('Produto Salvo!', 'O produto foi adicionado com sucesso e já está disponível na vitrine!');
+    };
+
+    window.deleteProduct = async function(id) {
+        if (!confirm("Deseja realmente remover este produto da sua vitrine?")) return;
+
+        // Try deleting from Supabase
+        try {
+            const { error } = await supabaseClient
+                .from('products')
+                .delete()
+                .eq('id', id);
+            if (error) console.warn("[Products] Supabase delete failed:", error.message);
+        } catch (err) {
+            console.warn("[Products] Supabase delete fallback:", err);
+        }
+
+        // Delete from local storage
+        let localProducts = JSON.parse(localStorage.getItem('user_products') || '[]');
+        localProducts = localProducts.filter(p => p.id !== id);
+        localStorage.setItem('user_products', JSON.stringify(localProducts));
+
+        renderProductsManager();
+        window.loadAndRenderShowcaseProducts();
+    };
+
+    function renderProductsManager() {
+        const listContainer = document.getElementById('produtos-items-list');
+        if (!listContainer) return;
+
+        const currentUserId = localStorage.getItem('user_id') || 'mock-id';
+
+        const localProducts = JSON.parse(localStorage.getItem('user_products') || '[]');
+        const myProducts = localProducts.filter(p => p.professional_id === currentUserId);
+
+        if (myProducts.length === 0) {
+            listContainer.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #666;">
+                    <span style="font-size: 2.5rem; display: block; margin-bottom: 0.5rem;">📦</span>
+                    Nenhum produto cadastrado ainda.
+                </div>
+            `;
+            return;
+        }
+
+        listContainer.innerHTML = myProducts.map(p => `
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 10px; border-radius: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <img src="${p.image_url}" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover;" onerror="this.src='https://images.unsplash.com/photo-1621607511815-684b45512257?w=100&auto=format&fit=crop'">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 800; color: #fff; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.name}</div>
+                    <div style="font-size: 0.75rem; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.description}</div>
+                    <div style="color: #FCD34D; font-weight: 800; font-size: 0.85rem; margin-top: 2px;">R$ ${parseFloat(p.price).toFixed(2).replace('.', ',')}</div>
+                </div>
+                <button onclick="window.deleteProduct('${p.id}')" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #EF4444; border-radius: 10px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;">🗑️</button>
+            </div>
+        `).join('');
+    }
+
+    window.loadAndRenderShowcaseProducts = async function() {
+        const showcaseContainer = document.getElementById('plus-products-container');
+        const listContainer = document.getElementById('plus-products-list');
+        const tickerContent = document.getElementById('products-ticker-content');
+        if (!showcaseContainer || !listContainer) return;
+
+        let dbProducts = [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('products')
+                .select('*');
+            if (data && !error) {
+                dbProducts = data.map(p => ({
+                    ...p,
+                    professional_name: p.professional_name || 'Profissional Plus'
+                }));
+            }
+        } catch (e) {
+            console.log("[Products] Fetch error, using localStorage fallback.");
+        }
+
+        const localProducts = JSON.parse(localStorage.getItem('user_products') || '[]');
+        const allProducts = [...defaultMockProducts, ...dbProducts, ...localProducts];
+
+        // Unique by ID to avoid duplicates
+        const uniqueProducts = [];
+        const seen = new Set();
+        for (const p of allProducts) {
+            if (!seen.has(p.id)) {
+                seen.add(p.id);
+                uniqueProducts.push(p);
+            }
+        }
+
+        if (uniqueProducts.length === 0) {
+            showcaseContainer.style.display = 'none';
+            const toggleBtn = document.getElementById('btn-toggle-products');
+            if (toggleBtn) toggleBtn.style.display = 'none';
+            return;
+        }
+
+        // Showcase is active!
+        showcaseContainer.style.display = 'flex';
+        const toggleBtn = document.getElementById('btn-toggle-products');
+        if (toggleBtn) toggleBtn.style.display = 'flex';
+
+        // Render Collapsed Ticker Marquee content
+        if (tickerContent) {
+            const tickerItems = uniqueProducts.map(p => {
+                const formattedPrice = parseFloat(p.price).toFixed(2).replace('.', ',');
+                return `<span style="filter: grayscale(1) brightness(0.85); opacity: 0.85;">🛍️</span> <span style="color: #ffffff; font-weight: 800;">${p.name}</span> (<span style="color: #FCD34D; font-weight: 800;">R$ ${formattedPrice}</span>)`;
+            });
+            const rawHtml = tickerItems.join(' &nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp; ');
+            tickerContent.innerHTML = `${rawHtml} &nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp; ${rawHtml} &nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp; ${rawHtml}`;
+        }
+
+        listContainer.innerHTML = uniqueProducts.map(p => `
+            <div class="product-card-glass" style="flex: 0 0 160px; scroll-snap-align: start; background: rgba(255,255,255,0.02); border: 1px solid rgba(168, 85, 247, 0.1); border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.3s ease;">
+                <div style="position: relative; width: 100%; height: 110px; border-radius: 12px; overflow: hidden; background: rgba(0,0,0,0.2);">
+                    <img src="${p.image_url}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='https://images.unsplash.com/photo-1621607511815-684b45512257?w=150&auto=format&fit=crop'">
+                    <span style="position: absolute; top: 6px; right: 6px; background: rgba(168, 85, 247, 0.95); color: #fff; font-size: 0.55rem; font-weight: 900; padding: 2px 6px; border-radius: 50px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">Plus</span>
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0;">
+                    <div>
+                        <div style="font-weight: 800; font-size: 0.8rem; color: #fff; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;">${p.name}</div>
+                        <div style="font-size: 0.65rem; color: #888; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; height: 24px; line-height: 1.2; margin-top: 2px;">${p.description}</div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
+                        <span style="font-size: 0.6rem; color: #a855f7; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Pro: ${p.professional_name || 'João Silva'}</span>
+                        <div style="color: #FCD34D; font-weight: 900; font-size: 0.95rem;">R$ ${parseFloat(p.price).toFixed(2).replace('.', ',')}</div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    };
+
     function filterAndRenderSearch() {
+        if (typeof window.loadAndRenderShowcaseProducts === 'function') {
+            window.loadAndRenderShowcaseProducts();
+        }
         const container = document.getElementById('search-results');
         const searchInput = document.getElementById('search-input');
         const recentContainer = document.getElementById('recent-professionals-container');
@@ -4671,7 +5423,10 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         const selectedCategory = categoryFilter ? categoryFilter.value : 'Todos';
 
         if (recentContainer) {
-            recentContainer.style.display = window.allProfessionalsCache.length > 0 ? 'block' : 'none';
+            const hasRecents = window.allProfessionalsCache.length > 0;
+            recentContainer.style.display = hasRecents ? 'block' : 'none';
+            const toggleBtn = document.getElementById('btn-toggle-recent');
+            if (toggleBtn) toggleBtn.style.display = hasRecents ? 'flex' : 'none';
         }
 
         const currentUserType = localStorage.getItem('user_type') || '';
@@ -4693,13 +5448,25 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             return matchesQuery && matchesCategory;
         });
 
-        // Sort based on proximity vs. stars/rating
+        // Sort based on proximity vs. stars/rating vs. price
         if (window.searchSortMode === 'rating') {
             filtered.sort((a, b) => {
                 const ratingA = parseFloat(a.rating) || 0;
                 const ratingB = parseFloat(b.rating) || 0;
                 if (ratingB !== ratingA) {
                     return ratingB - ratingA;
+                }
+                const nameA = (a.full_name || a.name || '').toLowerCase();
+                const nameB = (b.full_name || b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+        } else if (window.searchSortMode === 'price') {
+            filtered.sort((a, b) => {
+                const priceA = parseFloat(a.price) || (a.services && a.services.length > 0 ? parseFloat(a.services[0].price) : 0) || 999999;
+                const priceB = parseFloat(b.price) || (b.services && b.services.length > 0 ? parseFloat(b.services[0].price) : 0) || 999999;
+                
+                if (priceA !== priceB) {
+                    return priceA - priceB;
                 }
                 const nameA = (a.full_name || a.name || '').toLowerCase();
                 const nameB = (b.full_name || b.name || '').toLowerCase();
@@ -4743,6 +5510,9 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             const mainService = isProf && p.services && p.services.length > 0 ? p.services[0].name : (isProf ? p.specialty : '');
             const mainPrice = isProf && p.services && p.services.length > 0 ? `R$ ${p.services[0].price}` : '';
             
+            // Dynamic category symbol (💈 for Barbearia, ✂️ for beauty salons/other professionals)
+            const categorySymbol = isProf ? (p.category === 'Barbearia' ? '💈' : '✂️') : '👤';
+            
             return `
             <div class="card" style="display:flex; gap:0.8rem; align-items:center; cursor:pointer; background: #111; border: 1px solid #222; border-radius: 16px; padding: 1rem; margin-bottom: 0.8rem; position: relative;" onclick="location.hash='${targetHash}'">
                 <div style="width:56px; height:56px; flex-shrink:0;">
@@ -4753,13 +5523,13 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                         <div style="font-weight:800; font-size:0.95rem; color: #fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.full_name || 'Usuário'}</div>
                     </div>
                     <div style="font-size:0.7rem; color:#888; font-weight: 600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top: 2px;">
-                        <span style="color: ${isProf ? 'var(--primary-accent)' : '#aaa'};">${isProf ? '💼 ' + (p.category || 'Profissional') : '👤 Cliente'}</span> ${isProf ? '• ★ ' + (p.rating || '5.0') : ''}
+                        <span style="color: ${isProf ? 'var(--primary-accent)' : '#aaa'};">${categorySymbol} ${isProf ? (p.category || 'Profissional') : 'Cliente'}</span> ${isProf ? '• ★ ' + (p.rating || '5.0') : ''}
                     </div>
                     
                     ${mainService ? `
                         <div style="font-size:0.75rem; color:#fff; font-weight: 700; margin-top: 4px; display: flex; align-items: center; gap: 8px;">
-                            <span>✨ ${mainService}</span>
-                            ${mainPrice ? `<span style="color: #666; font-weight: 600; font-size: 0.7rem;">• ${mainPrice}</span>` : ''}
+                            <span>💇 ${mainService}</span>
+                            ${mainPrice ? `<span style="color: #FCD34D; font-weight: 800; font-size: 0.75rem;">• ${mainPrice}</span>` : ''}
                         </div>
                     ` : ''}
 
@@ -5390,7 +6160,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 'appointment': '📅',
                 'system': '⚙️',
                 'promotion': '🎁',
-                'info': 'ℹ️'
+                'info': 'ℹ️',
+                'deletion_request': '🚨'
             };
             const icon = icons[n.type] || '🕭';
             
@@ -5464,8 +6235,9 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #555; margin-top: 4px;">
                             <span>Enviado em: <strong style="color: #888;">${dateStr} às ${timeStr}</strong></span>
                             <div style="display: flex; gap: 8px;">
+                                ${ (localStorage.getItem('user_type') === 'admin' && n.type === 'deletion_request') ? `<button class="btn btn-sm" onclick="event.stopPropagation(); window.confirmAccountDeletion('${n.id}', '${n.sender_id}')" style="background: #ef4444; padding: 6px 14px; border-radius: 8px; font-weight: 900; font-size: 0.7rem; border: none; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); font-family: inherit;">Confirmar Exclusão</button>` : '' }
                                 ${n.link ? `<button class="btn btn-sm" onclick="event.stopPropagation(); executeNotificationLink('${n.id}', '${n.link}')" style="background: var(--primary-accent); padding: 6px 14px; border-radius: 8px; font-weight: 900; font-size: 0.7rem; border: none; color: white; cursor: pointer; box-shadow: 0 4px 10px rgba(168, 85, 247, 0.2);">Acessar</button>` : ''}
-                                ${!n.is_read ? `<button class="btn btn-sm" onclick="event.stopPropagation(); markOneAsRead('${n.id}')" style="background: rgba(255,255,255,0.05); padding: 6px 14px; border-radius: 8px; font-weight: 800; font-size: 0.7rem; border: 1px solid rgba(255,255,255,0.1); color: #ccc; cursor: pointer;">Lida</button>` : ''}
+                                ${(!n.is_read && n.type !== 'deletion_request') ? `<button class="btn btn-sm" onclick="event.stopPropagation(); markOneAsRead('${n.id}')" style="background: rgba(255,255,255,0.05); padding: 6px 14px; border-radius: 8px; font-weight: 800; font-size: 0.7rem; border: 1px solid rgba(255,255,255,0.1); color: #ccc; cursor: pointer;">Lida</button>` : ''}
                             </div>
                         </div>
                     </div>
@@ -6482,6 +7254,16 @@ window.renderAgendamentoScreen = async function() {
                 <div id="client-time-slots" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;"></div>
             </div>
 
+            <!-- Caixa de Cupom de Desconto -->
+            <div id="booking-coupon-group" style="display:none; margin-top: 2rem; width: 100%; max-width: 320px; align-self: center; text-align: center;">
+                <label style="display: block; margin-bottom: 0.75rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #a855f7;">🏷️ Cupom de Desconto</label>
+                <select id="booking-coupon-select" style="width: 100%; border-radius: 12px; padding: 0.9rem; background: #000000; color: #fff; border: 1px solid #333; font-size: 0.85rem; font-weight: 700; cursor: pointer; text-align: center; text-align-last: center; outline: none; -webkit-tap-highlight-color: transparent;">
+                    <option value="">NENHUM CUPOM SELECIONADO</option>
+                    <option value="BOASVINDAS10">BOASVINDAS10 (10% OFF)</option>
+                    <option value="NIVER10">NIVER10 (10% OFF)</option>
+                </select>
+            </div>
+
             <button id="btn-confirm-agendamento" class="btn btn-primary" style="margin-top: 1.5rem; display:none; max-width: 250px; align-self: center;">Confirmar Agendamento</button>
 
             <div style="margin-top: 2rem; flex: 1; display: flex; flex-direction: column;">
@@ -6674,9 +7456,27 @@ window.renderAgendamentoScreen = async function() {
         const timeGroup = document.getElementById('client-time-group');
         const timeSlotsContainer = document.getElementById('client-time-slots');
         const btnConfirm = document.getElementById('btn-confirm-agendamento');
+        const couponSelect = document.getElementById('booking-coupon-select');
+        const servicePriceEl = document.getElementById('prof-service-price');
         
         let selectedTime = null;
         let professionalBookedSlotsCache = {};
+
+        if (couponSelect && servicePriceEl) {
+            couponSelect.addEventListener('change', () => {
+                const profId = profSelect.value;
+                const prof = (window.loadedProfessionalsList || []).find(p => p.id === profId);
+                if (prof) {
+                    const priceVal = prof.price ? Number(prof.price) : 45.00;
+                    if (couponSelect.value) {
+                        const discounted = priceVal * 0.9;
+                        servicePriceEl.innerHTML = `<span style="text-decoration: line-through; color: #888; font-size: 0.95rem; margin-right: 8px;">R$ ${priceVal.toFixed(2).replace('.', ',')}</span> <span style="color: #10B981; font-weight: 900;">R$ ${discounted.toFixed(2).replace('.', ',')}</span> <span style="font-size: 0.65rem; background: #10B981; color: #000; padding: 2px 6px; border-radius: 6px; font-weight: 900; vertical-align: middle; margin-left: 6px;">10% OFF</span>`;
+                    } else {
+                        servicePriceEl.innerHTML = `<span style="color: #10B981; font-weight: 900;">R$ ${priceVal.toFixed(2).replace('.', ',')}</span>`;
+                    }
+                }
+            });
+        }
 
         async function prefetchProfessionalSlots(profId) {
             professionalBookedSlotsCache = {};
@@ -6712,32 +7512,32 @@ window.renderAgendamentoScreen = async function() {
         const today = `${year}-${month}-${day}`;
         if (dateInput) dateInput.setAttribute('min', today);
 
-            if (profSelect.value) {
-                profSelect.style.fontSize = '1.1rem';
-                prefetchProfessionalSlots(profSelect.value); // Trigger background pre-fetch immediately if pre-selected
-                const serviceBox = document.getElementById('prof-service-info-box');
-                const serviceNameEl = document.getElementById('prof-service-name');
-                const servicePriceEl = document.getElementById('prof-service-price');
-                const nameEl = document.getElementById('prof-selected-name');
-                const phoneEl = document.getElementById('prof-selected-phone');
-                const addressEl = document.getElementById('prof-selected-address');
-        
-                const prof = (window.loadedProfessionalsList || []).find(p => p.id === profSelect.value);
-                if (prof && serviceBox && serviceNameEl && servicePriceEl) {
-                    const specialty = prof.specialty || 'Serviço Personalizado';
-                    const priceVal = prof.price ? Number(prof.price).toFixed(2).replace('.', ',') : '45,00';
-                    serviceNameEl.innerText = specialty.toUpperCase();
-                    servicePriceEl.innerText = `R$ ${priceVal}`;
-                    
-                    if (nameEl) nameEl.innerText = prof.full_name;
-                    if (phoneEl) phoneEl.innerText = `📞 ${prof.phone || '(11) 99999-9999'}`;
-                    if (addressEl) {
-                        addressEl.innerText = `📍 ${prof.address ? `${prof.address}${prof.city ? ' - ' + prof.city : ''}` : `Av. Paulista, 1000 - ${prof.city || 'São Paulo, SP'}`}`;
-                    }
-        
-                    serviceBox.style.display = 'block';
+        if (profSelect.value) {
+            profSelect.style.fontSize = '1.1rem';
+            prefetchProfessionalSlots(profSelect.value); // Trigger background pre-fetch immediately if pre-selected
+            const serviceBox = document.getElementById('prof-service-info-box');
+            const serviceNameEl = document.getElementById('prof-service-name');
+            const servicePriceEl = document.getElementById('prof-service-price');
+            const nameEl = document.getElementById('prof-selected-name');
+            const phoneEl = document.getElementById('prof-selected-phone');
+            const addressEl = document.getElementById('prof-selected-address');
+    
+            const prof = (window.loadedProfessionalsList || []).find(p => p.id === profSelect.value);
+            if (prof && serviceBox && serviceNameEl && servicePriceEl) {
+                const specialty = prof.specialty || 'Serviço Personalizado';
+                const priceVal = prof.price ? Number(prof.price).toFixed(2).replace('.', ',') : '45,00';
+                serviceNameEl.innerText = specialty.toUpperCase();
+                servicePriceEl.innerText = `R$ ${priceVal}`;
+                
+                if (nameEl) nameEl.innerText = prof.full_name;
+                if (phoneEl) phoneEl.innerText = `📞 ${prof.phone || '(11) 99999-9999'}`;
+                if (addressEl) {
+                    addressEl.innerText = `📍 ${prof.address ? `${prof.address}${prof.city ? ' - ' + prof.city : ''}` : `Av. Paulista, 1000 - ${prof.city || 'São Paulo, SP'}`}`;
                 }
-            } else {
+    
+                serviceBox.style.display = 'block';
+            }
+        } else {
             profSelect.style.fontSize = '0.85rem';
             const serviceBox = document.getElementById('prof-service-info-box');
             if (serviceBox) serviceBox.style.display = 'none';
@@ -6763,6 +7563,8 @@ window.renderAgendamentoScreen = async function() {
             const serviceBox = document.getElementById('prof-service-info-box');
             const serviceNameEl = document.getElementById('prof-service-name');
             const servicePriceEl = document.getElementById('prof-service-price');
+            const couponGroup = document.getElementById('booking-coupon-group');
+            const couponSelect = document.getElementById('booking-coupon-select');
 
             if (profSelect.value) {
                 profSelect.style.fontSize = '1.1rem';
@@ -6793,6 +7595,9 @@ window.renderAgendamentoScreen = async function() {
                     serviceBox.style.display = 'block';
                 }
 
+                if (couponGroup) couponGroup.style.display = 'block';
+                if (couponSelect) couponSelect.value = '';
+
                 dateGroup.style.display = 'block';
                 dateInput.value = '';
                 timeGroup.style.display = 'none';
@@ -6800,6 +7605,7 @@ window.renderAgendamentoScreen = async function() {
             } else {
                 profSelect.style.fontSize = '0.85rem';
                 if (serviceBox) serviceBox.style.display = 'none';
+                if (couponGroup) couponGroup.style.display = 'none';
                 dateGroup.style.display = 'none';
                 timeGroup.style.display = 'none';
                 btnConfirm.style.display = 'none';
@@ -6920,7 +7726,33 @@ window.renderAgendamentoScreen = async function() {
         btnConfirm.onclick = async () => {
             const profId = profSelect.value;
             const dateVal = dateInput.value;
-            const targetClientId = isAdminBooking ? clientSelect.value : user.id;
+            let targetClientId = isAdminBooking ? clientSelect.value : user.id;
+
+            // Fail-safe: If targetClientId is dummy/zero but we have user_id stored or can resolve it
+            if (!isAdminBooking && (!targetClientId || targetClientId === '00000000-0000-0000-0000-000000000000')) {
+                const storedUserId = localStorage.getItem('user_id');
+                if (storedUserId && storedUserId !== '00000000-0000-0000-0000-000000000000') {
+                    targetClientId = storedUserId;
+                } else {
+                    const userEmail = localStorage.getItem('user_email');
+                    if (userEmail && userEmail !== 'ZeroZynapses') {
+                        console.log("Resolving client UUID via public.profiles by email for safety...");
+                        try {
+                            const { data: profData } = await supabaseClient
+                                .from('profiles')
+                                .select('id')
+                                .eq('email', userEmail)
+                                .maybeSingle();
+                            if (profData && profData.id) {
+                                targetClientId = profData.id;
+                                localStorage.setItem('user_id', targetClientId);
+                            }
+                        } catch (resolveErr) {
+                            console.warn("Could not query client UUID by email:", resolveErr);
+                        }
+                    }
+                }
+            }
 
             if (!profId || !dateVal || !selectedTime || (isAdminBooking && !targetClientId)) {
                 alert('Por favor, preencha todos os campos!');
@@ -6933,7 +7765,10 @@ window.renderAgendamentoScreen = async function() {
             const prof = (window.loadedProfessionalsList || []).find(p => p.id === profId);
             const profName = prof?.full_name || 'Profissional';
             const specialty = prof?.specialty || 'Serviço Personalizado';
-            const priceVal = prof?.price ? Number(prof.price) : 45.00;
+            const couponSelect = document.getElementById('booking-coupon-select');
+            const couponVal = couponSelect ? couponSelect.value : '';
+            const priceValOriginal = prof?.price ? Number(prof.price) : 45.00;
+            const priceVal = couponVal ? priceValOriginal * 0.9 : priceValOriginal;
 
             try {
                 // Pre-validation checking if slot has been booked by another user (with a 6-second timeout)
@@ -7264,4 +8099,139 @@ function initMobilePullToRefresh() {
             textEl.style.color = '#fff';
         }
     }, { passive: true });
+
+    window.showHelpOverlay = function(type) {
+        const overlay = document.getElementById('profile-warning-overlay');
+        const titleEl = document.getElementById('profile-warning-title');
+        const msgEl = document.getElementById('profile-warning-message');
+        const iconEl = document.getElementById('profile-warning-icon');
+        const deleteBtn = document.getElementById('profile-warning-delete-btn');
+        if (!overlay || !titleEl || !msgEl || !iconEl) return;
+        
+        if (type === 'financeiro') {
+            titleEl.innerText = "Meu Financeiro";
+            msgEl.innerText = "O painel de faturamento e controle de gastos/lucros profissional está em desenvolvimento e será ativado em breve.";
+            iconEl.innerText = "📊";
+            if (deleteBtn) deleteBtn.style.display = 'none';
+        } else if (type === 'doacoes') {
+            titleEl.innerText = "Doações";
+            msgEl.innerText = "A área de contribuições e apoio comunitário estará disponível em breve.";
+            iconEl.innerText = "❤️";
+            if (deleteBtn) deleteBtn.style.display = 'none';
+        } else {
+            titleEl.innerText = "Central de Ajuda";
+            msgEl.innerText = "O suporte técnico e a base de conhecimento estarão disponíveis no lançamento oficial. Se deseja encerrar sua conta, você pode solicitar a exclusão ao suporte.";
+            iconEl.innerText = "💡";
+            if (deleteBtn) deleteBtn.style.display = 'block';
+        }
+        
+        overlay.style.display = 'flex';
+    };
+
+    window.closeProfileWarningOverlay = function() {
+        const overlay = document.getElementById('profile-warning-overlay');
+        if (overlay) overlay.style.display = 'none';
+    };
+
+    window.requestAccountDeletion = async function() {
+        const confirmDelete = confirm("⚠️ Tem certeza que deseja solicitar a exclusão de sua conta? Esta ação enviará um pedido ao suporte administrativo para aprovação.");
+        if (!confirmDelete) return;
+
+        const btn = document.getElementById('profile-warning-delete-btn');
+        if (btn) {
+            btn.innerText = "Enviando solicitação...";
+            btn.disabled = true;
+        }
+
+        try {
+            const user = await getCurrentUser();
+            let userId = user ? user.id : localStorage.getItem('user_id');
+            const myName = localStorage.getItem('user_name') || 'Usuário';
+            const myEmail = localStorage.getItem('user_email') || '';
+
+            if (!userId) {
+                alert("Erro: Não foi possível identificar o usuário logado.");
+                if (btn) {
+                    btn.innerText = "Apagar Minha Conta";
+                    btn.disabled = false;
+                }
+                return;
+            }
+
+            const ADMIN_ID = 'e33bdd17-f6bc-4c72-82cf-c3f76124aca0';
+
+            // Send notification to Support Admin
+            const { error } = await supabaseClient.from('notifications').insert([{
+                user_id: ADMIN_ID,
+                sender_id: userId,
+                type: 'deletion_request',
+                title: '🚨 Solicitação de Exclusão!',
+                content: `O usuário ${myName} (${myEmail}) solicitou a exclusão definitiva de sua conta.`,
+                link: '#admin-dashboard'
+            }]);
+
+            if (error) {
+                alert("Erro ao enviar solicitação: " + error.message);
+            } else {
+                alert("✅ Solicitação enviada com sucesso! Sua conta será excluída assim que o administrador do suporte aprovar.");
+                window.closeProfileWarningOverlay();
+            }
+        } catch (err) {
+            alert("Erro ao enviar solicitação: " + err.message);
+        } finally {
+            if (btn) {
+                btn.innerText = "Apagar Minha Conta";
+                btn.disabled = false;
+            }
+        }
+    };
+
+    window.confirmAccountDeletion = async function(notifId, userId) {
+        const confirmApprove = confirm("🚨 Deseja realmente aprovar e confirmar a exclusão desta conta de usuário? Esta ação removerá definitivamente o perfil e todos os dados associados. Esta ação é IRREVERSÍVEL.");
+        if (!confirmApprove) return;
+
+        try {
+            // Delete profile
+            const { error: profileErr } = await supabaseClient.from('profiles').delete().eq('id', userId);
+            if (profileErr) {
+                alert("Erro ao deletar perfil: " + profileErr.message);
+                return;
+            }
+
+            // Clean up notifications sent by or received by this user
+            await supabaseClient.from('notifications').delete().eq('user_id', userId);
+            await supabaseClient.from('notifications').delete().eq('sender_id', userId);
+            
+            // Delete the deletion request notification itself
+            await supabaseClient.from('notifications').delete().eq('id', notifId);
+
+            alert("✅ Conta e perfil excluídos com sucesso!");
+            
+            // Reload window or reload agenda
+            location.reload();
+        } catch (err) {
+            alert("Erro ao processar exclusão: " + err.message);
+        }
+    };
+
+    window.toggleAppTheme = function() {
+        const root = document.documentElement;
+        if (root.classList.contains('light-theme')) {
+            root.classList.remove('light-theme');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            root.classList.add('light-theme');
+            localStorage.setItem('theme', 'light');
+        }
+    };
+
+    // Auto-apply saved theme on script load
+    try {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            document.documentElement.classList.add('light-theme');
+        }
+    } catch(e) {
+        console.warn(e);
+    }
 }

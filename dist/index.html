@@ -22,8 +22,8 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⭕</text></svg>">
-  <script type="module" crossorigin src="/assets/index-DqZYrS7g.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-C45OKaDo.css">
+  <script type="module" crossorigin src="/assets/index-fnB3PcIZ.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CEtkFQAY.css">
 </head>
 <body>
     <div id="app">
@@ -60,10 +60,10 @@
                         <label>Senha</label>
                         <div class="password-wrapper">
                             <input type="password" id="login-password" name="password" placeholder="••••••••">
-                            <button type="button" id="btn-toggle-login-pw" onclick="(function(){var i=document.getElementById('login-password');var b=document.getElementById('btn-toggle-login-pw');if(i.type==='password'){i.type='text';b.textContent='🔒';}else{i.type='password';b.textContent='👁️';}})()" style="position:absolute;right:12px;background:transparent;border:none;cursor:pointer;font-size:1.2rem;padding:4px;z-index:10;filter:grayscale(1) opacity(0.5);">👁️</button>
+                            <button type="button" class="btn-toggle-password" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon-svg"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
                         </div>
                     </div>
-                    <button type="button" id="btn-login-submit" class="btn btn-primary" style="max-width: 180px; margin: 4rem auto 0.5rem;">Entrar</button>
+                    <button type="button" id="btn-login-submit" class="btn btn-primary" style="max-width: 180px; margin: 1.5rem auto 0.5rem;">Entrar</button>
                     <div id="login-error" style="display:none; margin-top: 0.75rem; padding: 0.75rem 1rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.4); border-radius: 12px; color: #f87171; font-size: 0.85rem; text-align: center;"></div>
                 </form>
                 <div class="auth-divider"><span>ou</span></div>
@@ -93,7 +93,7 @@
                         <label>Senha</label>
                         <div class="password-wrapper">
                             <input type="password" placeholder="••••••••" required>
-                            <span class="toggle-password">👁️</span>
+                            <button type="button" class="btn-toggle-password" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon-svg"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary">Cadastrar</button>
@@ -188,7 +188,7 @@
                         <label><span style="filter: grayscale(1) opacity(0.5); margin-right: 5px;">🔒</span> Senha</label>
                         <div class="password-wrapper">
                             <input type="password" placeholder="••••••••" required>
-                            <span class="toggle-password">👁️</span>
+                            <button type="button" class="btn-toggle-password" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon-svg"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary" id="btn-final-client">Concluir Cadastro</button>
@@ -541,7 +541,7 @@
                         <label><span style="filter: grayscale(1) opacity(0.5); margin-right: 5px;">🔒</span> Senha</label>
                         <div class="password-wrapper">
                             <input type="password" placeholder="••••••••" required>
-                            <span class="toggle-password">👁️</span>
+                            <button type="button" class="btn-toggle-password" tabindex="-1"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon-svg"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg></button>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary" id="btn-final-prof">Finalizar Perfil Profissional</button>
@@ -552,37 +552,28 @@
         <main id="main-content" class="screen">
             <!-- Top Menu Tab Bar (Fixed) -->
             <nav class="top-tab-bar">
-                <a class="top-tab" href="#busca"><span style="filter: grayscale(1) brightness(1.2);">🔍</span></a>
+                <a class="top-tab" href="#busca"><span style="filter: grayscale(1) brightness(1.2); display: inline-block; transform: rotate(-45deg);">🧭</span></a>
                 <a class="top-tab" href="#gastos"><span style="filter: grayscale(1) brightness(1.2); font-size: 1.44rem; display: inline-block; transform: translateY(-3px);">💼</span></a>
                 <a class="top-tab" href="#home" id="nav-home-btn"><span style="filter: grayscale(1) brightness(1.2);">🏠</span></a>
                 <a class="top-tab" href="#agendamento"><span style="filter: grayscale(1) brightness(1.2);">📅</span></a>
                 <a class="top-tab" href="#perfil" style="position: relative;">
                     <span id="nav-profile-icon">👤</span>
                     <div id="profile-notif-badge" style="display: none; position: absolute; top: 0px; right: 0px; width: 10px; height: 10px; background: #ff4d4d; border-radius: 50%; border: 2px solid #000;"></div>
+                    <div id="profile-gray-cover"></div>
                 </a>
             </nav>
 
             <!-- Home Screen (Dynamic Dashboard) -->
             <div id="home" class="sub-screen active">
-                <div class="home-feed" style="padding: 1.5rem 1rem 5rem 1rem; text-align: left;">
+                <div class="home-feed" style="padding: 1.5rem 1rem 5rem 1rem; text-align: left; margin-top: -3.5vh;">
                     
-                    <!-- Intro -->
-                    <div class="home-intro" style="margin-bottom: 2.5rem; text-align: center;">
-                        <h2 style="font-size: 1.8rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(90deg, #fff, #888); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Rede de Cabeleireiros e Barbearia</h2>
-                        <p style="color: #aaa; font-size: 0.95rem; line-height: 1.4;">A maior comunidade regional conectando os melhores profissionais aos clientes mais exigentes. Descubra, agende e transforme seu estilo.</p>
-                    </div>
-
-                    <!-- Ads (Publis) -->
-                    <div class="home-ads" style="margin-bottom: 2.5rem;">
-                        <div class="ad-card" style="background: #111; border-radius: 20px; overflow: hidden; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-                            <!-- Imagem de barbearia Unsplash -->
-                            <img src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Publicidade Barbearia" style="width: 100%; height: 220px; object-fit: cover; display: block;">
-                            <div style="padding: 1.25rem;">
-                                <h4 style="margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #fff;">Equipamentos Profissionais Premium</h4>
-                                <p style="color: #888; font-size: 0.85rem; margin: 0; line-height: 1.4;">As melhores máquinas, tesouras e produtos para o seu espaço. Aproveite os descontos da semana e eleve o nível do seu atendimento!</p>
-                            </div>
+                    <!-- Intro (Wrapped in screen-header for beautiful purple borders) -->
+                    <header class="screen-header" style="margin-bottom: 2.5rem; text-align: center;">
+                        <div class="home-intro" style="margin: 0; padding: 0.5rem 0;">
+                            <h2 style="font-size: 1.8rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(90deg, #fff, #888); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Rede de Cabeleireiros e Barbearia</h2>
+                            <p style="color: #aaa; font-size: 0.95rem; line-height: 1.4; margin: 0;">A maior comunidade regional conectando os melhores profissionais aos clientes mais exigentes. Descubra, agende e transforme seu estilo.</p>
                         </div>
-                    </div>
+                    </header>
 
                     <!-- Client View (Oculto por padrão, ativado via JS) -->
                     <div id="client-dashboard" class="role-dashboard client-only" style="display: none; margin-bottom: 2.5rem;">
@@ -618,6 +609,23 @@
                                 <h4>Mapa de Clientes</h4>
                                 <p>Onde estão os clientes</p>
                             </div>
+                            <div class="dash-card" onclick="window.openProductsManager()">
+                                <div class="card-icon">🛍️</div>
+                                <h4>Meus Produtos</h4>
+                                <p id="dash-products-desc">Gerenciar Loja <span id="dash-products-lock">🔒</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ads (Publis) - Moved below dashboards -->
+                    <div class="home-ads" style="margin-bottom: 2.5rem;">
+                        <div class="ad-card" style="background: #111; border-radius: 20px; overflow: hidden; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                            <!-- Imagem de barbearia Unsplash -->
+                            <img src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Publicidade Barbearia" style="width: 100%; height: 220px; object-fit: cover; display: block;">
+                            <div style="padding: 1.25rem;">
+                                <h4 style="margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #fff;">Equipamentos Profissionais Premium</h4>
+                                <p style="color: #888; font-size: 0.85rem; margin: 0; line-height: 1.4;">As melhores máquinas, tesouras e produtos para o seu espaço. Aproveite os descontos da semana e eleve o nível do seu atendimento!</p>
+                            </div>
                         </div>
                     </div>
 
@@ -626,10 +634,8 @@
                         <h4 style="margin: 0 0 1.25rem 0; display: flex; align-items: center; gap: 8px; color: #fff; font-size: 1rem;">
                             <span style="color: var(--primary-accent); font-size: 1.2rem;">📌</span> Avisos da Administração
                         </h4>
-                        <div class="announcement-item" style="border-left: 3px solid var(--primary-accent); padding-left: 12px; margin-bottom: 1.25rem;">
-                            <p style="margin: 0 0 0.4rem 0; font-size: 0.9rem; color: #eee;">Bem-vindos à nova versão do aplicativo!</p>
-                            <p style="margin: 0 0 0.4rem 0; font-size: 0.8rem; color: #888;">Estamos trabalhando duro para trazer as melhores ferramentas para vocês.</p>
-                            <small style="color: #555; font-weight: bold;">Por: Admin • Hoje</small>
+                        <div class="announcement-item" id="dynamic-launch-announcement" style="border-left: 3px solid var(--primary-accent); padding-left: 12px; margin-bottom: 1.25rem;">
+                            <!-- Carregado dinamicamente via JS -->
                         </div>
                         <div class="announcement-item" style="border-left: 3px solid #444; padding-left: 12px;">
                             <p style="margin: 0 0 0.4rem 0; font-size: 0.9rem; color: #aaa;">Novas especialidades adicionadas.</p>
@@ -643,33 +649,93 @@
 
             <!-- Outras Sub-screens (Busca, Chat, Perfil) omitidas por brevidade mas mantidas no arquivo real -->
             <div id="busca" class="sub-screen">
-                <header class="search-header">
-                    <div class="search-input-wrapper">
-                        <button id="btn-search-trigger" style="background: transparent; border: none; color: #666; font-size: 1.1rem; margin-left: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center;">🔍</button>
-                        <input type="text" id="search-input" placeholder="O que você procura?">
-                        <button id="search-sort-toggle" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #b085f5; border-radius: 10px; width: 34px; height: 70%; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; flex-shrink: 0; padding: 0; box-sizing: border-box;" onclick="toggleSearchSortMode()">
+                <header class="search-header" style="display: flex; flex-direction: column; align-items: flex-start; padding: 1rem; gap: 8px;">
+                    <div class="search-input-wrapper" style="width: 100%; display: flex; align-items: center; gap: 8px; box-sizing: border-box; position: relative;">
+                        <button id="btn-search-trigger" style="background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; outline: none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="url(#search-glow-gradient)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px rgba(255,255,255,0.25));">
+                                <defs>
+                                    <linearGradient id="search-glow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stop-color="#ffffff" />
+                                        <stop offset="100%" stop-color="#888888" />
+                                    </linearGradient>
+                                </defs>
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                        </button>
+                        
+                        <button id="search-sort-toggle" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #b085f5; border-radius: 10px; width: 34px; height: 34px; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; flex-shrink: 0; padding: 0; box-sizing: border-box; outline: none; -webkit-tap-highlight-color: transparent;" onclick="window.toggleSearchSortMode()">
                             <span id="search-sort-icon">📍</span>
                         </button>
-                        <select id="category-filter">
+                        
+                        <!-- Real-Time Temporary Floating Filter Mode Indicator Badge (Perfectly Centered!) -->
+                        <div id="search-sort-badge" style="background: rgba(168, 85, 247, 0.95); border: 1px solid rgba(168, 85, 247, 0.4); color: #fff; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); opacity: 0; transform: translate(-50%, -50%) scale(0.85); pointer-events: none; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: absolute; left: 35%; top: 50%; z-index: 10; backdrop-filter: blur(8px); height: 26px; box-sizing: border-box; line-height: 1;">
+                            <span id="search-sort-badge-icon">📍</span> <span id="search-sort-badge-text">Proximidade</span>
+                        </div>
+
+                        <input type="text" id="search-input" placeholder="O que você procura?" style="flex: 1; min-width: 0;">
+                        
+                        <select id="category-filter" style="width: auto; height: 34px; border-radius: 10px; padding: 0 8px; font-size: 0.8rem; margin-left: 6px; text-align: center; text-align-last: center; -moz-text-align-last: center;">
                             <option value="Todos">Todos</option>
                             <option value="Salão">Salão</option>
                             <option value="Barbearia">Barbearia</option>
-                            <option value="Estúdio de Beleza">Estúdio de Beleza</option>
+                            <option value="Estúdio de Beleza">Estúdio</option>
                             <option value="Espaço">Espaço</option>
                         </select>
                     </div>
                 </header>
                 
-                <div class="search-results" id="search-results" style="padding: 1rem;"></div>
+                <!-- Guia de Profissionais pushed down by 2% of the screen size (2vh) -->
+                <div class="search-results" id="search-results" style="padding: 1rem; margin-top: 2vh;"></div>
 
-                <div id="recent-professionals-container" style="margin-top: 15vh; padding: 0 1rem 1rem 1rem; display:none;">
-                    <h4 style="margin: 0 0 0.6rem 0; color: #fff; font-size: 0.95rem; font-weight: 800; text-align: center;">Novo por aqui</h4>
-                    <div id="recent-professionals-list" class="featured-scroll" style="padding-bottom: 0.5rem; display: flex; justify-content: center; gap: 10px; overflow-x: auto;">
-                        <!-- preenchido via JS -->
-                    </div>
+                <!-- Beautifully Structured Black Bottom Container with Gradient and Purple Border Top -->
+                <div id="busca-bottom-container">
                     
-                    <!-- Dynamic Services Guide -->
-                    <div id="dynamic-services-guide" style="margin-top: 2.5vh; background: rgba(168, 85, 247, 0.04); border: 1px solid rgba(168, 85, 247, 0.15); padding: 0.5rem 1rem; border-radius: 18px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.4); cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 68px; box-sizing: border-box; width: 100%; max-width: 400px; margin-left: auto; margin-right: auto;">
+                    <!-- Showcase of Products from Plus Plan Professionals (Always Visible Marquee Ticker) -->
+                    <div id="plus-products-container" style="margin-top: 0px; padding: 0; display: none; flex-direction: column; align-items: center; width: 100%; box-sizing: border-box;">
+                        <!-- Collapsed State: Sleek Scrolling Marquee Ticker -->
+                        <div id="products-ticker-container" onclick="window.toggleProductsDrawer()" style="width: calc(100% - 2rem); margin: 0 auto 0.5rem auto; overflow: hidden; background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.15); border-radius: 14px; padding: 8px 12px; box-sizing: border-box; display: flex; align-items: center; transition: all 0.3s ease; height: 38px; cursor: pointer; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);">
+                            <div id="products-ticker-content" class="products-marquee-active" style="display: inline-block; color: #fff; font-size: 0.8rem; font-weight: 700; white-space: nowrap;">
+                                <!-- Preenchido dinamicamente com nomes e preços -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Single Unified Premium Collapsible Drawer Container (Novo por Aqui & Vitrine in the same guide!) -->
+                    <div id="shared-drawer-container" style="width: 100%; max-height: 0px; opacity: 0; transform: translateY(25px); overflow: hidden; transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; align-items: center; box-sizing: border-box;">
+                        
+                        <!-- Novo por Aqui Content Wrapper (recent-professionals-container keeps the same ID for JS rendering logic) -->
+                        <div id="recent-professionals-container" style="width: 100%; display: none; flex-direction: column; align-items: center; box-sizing: border-box; padding: 0 1rem 1rem 1rem;">
+                            <div id="recent-professionals-list" class="featured-scroll" style="width: 100%; padding-bottom: 0.5rem; display: flex; justify-content: center; gap: 10px; overflow-x: auto; box-sizing: border-box;">
+                                <!-- preenchido via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Vitrine de Produtos Content Wrapper -->
+                        <div id="plus-products-content-inner" style="width: 100%; display: none; flex-direction: column; align-items: center; box-sizing: border-box; padding: 0 1rem 1rem 1rem;">
+                            <div id="plus-products-list" class="featured-scroll" style="width: 100%; padding-bottom: 0.5rem; display: flex; justify-content: flex-start; gap: 12px; overflow-x: auto; box-sizing: border-box; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;">
+                                <!-- preenchido via JS com cards de alta fidelidade -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Shared Minimalist Toggle Bar (Moved Down right above Serviços Principais!) -->
+                    <div id="drawers-toggle-bar" style="display: flex; gap: 12px; justify-content: center; align-items: center; margin: 1vh auto 0.5rem auto; width: 100%; box-sizing: border-box;">
+                        <!-- btn-toggle-recent -->
+                        <button id="btn-toggle-recent" onclick="window.toggleRecentDrawer()" style="background: #000000; border: 1px solid rgba(168, 85, 247, 0.3); padding: 0.6rem 1.1rem; border-radius: 50px; color: #fff; font-size: 0.9rem; font-weight: 800; display: none; align-items: center; gap: 8px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 15px rgba(0,0,0,0.3); backdrop-filter: blur(8px); outline: none; -webkit-tap-highlight-color: transparent;">
+                            <span style="filter: grayscale(1) brightness(0.7); opacity: 0.85;">✨</span>
+                            <span id="recent-toggle-arrow" style="display: inline-block; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-size: 0.8rem; opacity: 0.7;">▼</span>
+                        </button>
+
+                        <!-- btn-toggle-products -->
+                        <button id="btn-toggle-products" onclick="window.toggleProductsDrawer()" style="background: #000000; border: 1px solid rgba(168, 85, 247, 0.3); padding: 0.6rem 1.1rem; border-radius: 50px; color: #fff; font-size: 0.9rem; font-weight: 800; display: none; align-items: center; gap: 8px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 15px rgba(0,0,0,0.3); backdrop-filter: blur(8px); outline: none; -webkit-tap-highlight-color: transparent;">
+                            <span id="products-toggle-arrow" style="display: inline-block; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-size: 0.8rem; opacity: 0.7;">▼</span>
+                            <span style="filter: grayscale(1) brightness(0.85); opacity: 0.8;">🛍️</span>
+                        </button>
+                    </div>
+
+                    <!-- Dynamic Services Guide (Placed below the buttons, Always Fixed & Highly Visible!) -->
+                    <div id="dynamic-services-guide" style="margin: 0.5rem auto 0.2rem auto; background: #000000; border: 1px solid rgba(168, 85, 247, 0.35); padding: 0.5rem 1rem; border-radius: 18px; text-align: center; box-shadow: 0 4px 20px rgba(168, 85, 247, 0.15); cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 68px; box-sizing: border-box; width: calc(100% - 2rem); max-width: 400px;">
                         <span style="font-size: 0.7rem; color: #777; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800;">Serviços Principais</span>
                         <div id="dynamic-service-value" style="color: #fff; font-size: 1rem; font-weight: 900; transition: opacity 0.5s ease, transform 0.5s ease; text-shadow: 0 0 12px rgba(168, 85, 247, 0.4); display: inline-block;">Carregando...</div>
                         <div id="dynamic-service-price" style="color: #FCD34D; font-size: 0.85rem; font-weight: 800; transition: opacity 0.5s ease, transform 0.5s ease; display: inline-block;">R$ 0,00</div>
@@ -741,7 +807,7 @@
 
                         <div class="info-item" id="points-info-container" style="gap: 2px;">
                             <span class="info-value points" id="user-points-inline-display"></span>
-                            <span id="user-plan-display" style="font-size: 0.75rem; color: #b085f5; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Plano Comum</span>
+                            <span id="user-plan-display" style="font-size: 0.75rem; color: #b085f5; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Plano Essencial</span>
                         </div>
 
                         <div class="info-item">
@@ -754,24 +820,46 @@
 
                     <div class="profile-menu">
                         <div class="menu-item" onclick="location.hash='#chat'" style="position: relative;">
-                            <span><span class="outline-icon">🗨</span> Chat / Mensagens</span>
+                            <span class="outline-icon">🗨</span>
+                            <span>Chat / Mensagens</span>
                             <div id="menu-chat-badge" style="display: none; position: absolute; right: 20px; top: 50%; transform: translateY(-50%); background: #b085f5; color: #111; font-size: 0.65rem; font-weight: 900; padding: 2px 6px; border-radius: 10px;">0</div>
                         </div>
                         <div class="menu-item" onclick="location.hash='#notificacoes'" style="position: relative;">
-                            <span><span class="outline-icon">🕭</span> Notificações</span>
+                            <span class="outline-icon">🕭</span>
+                            <span>Notificações</span>
                             <div id="menu-notif-badge" style="display: none; position: absolute; right: 20px; top: 50%; transform: translateY(-50%); background: #b085f5; color: #111; font-size: 0.65rem; font-weight: 900; padding: 2px 6px; border-radius: 10px;">0</div>
                         </div>
-                        <div class="menu-item" onclick="showOverlay('cupons-overlay')"><span><span class="outline-icon">🎫</span> Meus Cupons</span></div>
-                        <div class="menu-item" onclick="alert('Meu Financeiro em breve!')"><span><span class="outline-icon">$</span> Meu Financeiro</span></div>
-                        <div class="menu-item" onclick="alert('Ajuda e Suporte em breve!')"><span><span class="outline-icon">?</span> Ajuda</span></div>
-                        <div class="menu-item" onclick="location.hash='#doacoes'"><span><span class="outline-icon">♡</span> Doações</span></div>
-                        <div class="menu-item" onclick="location.hash='#editar-perfil'"><span><span class="outline-icon" style="color: #a855f7;">✎</span> Editar Perfil</span></div>
-                        <div class="menu-item" onclick="location.hash='#configuracoes'"><span><span class="outline-icon">⚙</span> Configurações</span></div>
-                        <div class="menu-item admin-only" onclick="fixAdminAccount()" style="display: none; border: 1px dashed #a855f7; margin: 10px 0; border-radius: 12px; background: rgba(168, 85, 247, 0.05);">
-                            <span style="color: #a855f7;"><span class="outline-icon">⚙</span> Sincronizar ADM</span>
+                        <div class="menu-item" onclick="showOverlay('cupons-overlay')">
+                            <span class="outline-icon" style="filter: grayscale(1) brightness(2.5);">🎫</span>
+                            <span>Meus Cupons</span>
                         </div>
-                        <div class="logout" onclick="doLogout()" style="cursor:pointer; display: flex; align-items: center; gap: 10px; padding: 15px; color: #FBBF24; font-weight: 600; border-top: 1px solid #222;">
-                            <span class="outline-icon" style="color: #FBBF24;">⍈</span> Sair
+                        <div class="menu-item" onclick="window.showHelpOverlay('financeiro')">
+                            <span class="outline-icon">$</span>
+                            <span>Meu Financeiro</span>
+                        </div>
+                        <div class="menu-item" onclick="window.showHelpOverlay('ajuda')">
+                            <span class="outline-icon">?</span>
+                            <span>Ajuda</span>
+                        </div>
+                        <div class="menu-item" onclick="window.showHelpOverlay('doacoes')">
+                            <span class="outline-icon">♡</span>
+                            <span>Doações</span>
+                        </div>
+                        <div class="menu-item" onclick="location.hash='#editar-perfil'">
+                            <span class="outline-icon" style="color: #a855f7;">✎</span>
+                            <span>Editar Perfil</span>
+                        </div>
+                        <div class="menu-item" onclick="window.toggleAppTheme()">
+                            <span class="outline-icon">◐</span>
+                            <span>Tema</span>
+                        </div>
+                        <div class="menu-item admin-only" onclick="fixAdminAccount()" style="display: none; border: 1px dashed #a855f7; margin: 10px 0; border-radius: 12px; background: rgba(168, 85, 247, 0.05);">
+                            <span class="outline-icon" style="color: #a855f7;">⚙</span>
+                            <span style="color: #a855f7;">Sincronizar ADM</span>
+                        </div>
+                        <div class="logout" onclick="doLogout()" style="cursor:pointer; display: flex; align-items: center; justify-content: center; position: relative; padding: 15px; color: #888888; font-weight: 600; border-top: 1px solid #222;">
+                            <span class="outline-icon" style="color: #888888; position: absolute; left: 15px; top: 50%; transform: translateY(-50%);">⍈</span>
+                            <span>Sair</span>
                         </div>
                     </div>
                 </div>
@@ -836,7 +924,7 @@
                 <div class="profile-content" style="flex:1;">
                     <div class="profile-info-card" style="align-items: center; text-align: center;">
                         <span class="info-label">Total Gasto na Plataforma</span>
-                        <h2 id="gastos-total" style="color: #10B981; font-size: 2rem; margin: 10px 0;">R$ 0,00</h2>
+                        <h2 id="gastos-total" style="color: #FCD34D; font-size: 2rem; margin: 10px 0;">R$ 0,00</h2>
                     </div>
 
                     <h4 style="margin-top: 1.5rem; margin-bottom: 1rem; text-align: center;">Meus Lugares Preferidos</h4>
@@ -877,6 +965,7 @@
             <header class="overlay-header">
                 <button class="back-btn" onclick="history.back()">←</button>
                 <h3>Editar Perfil</h3>
+                <div style="width: 48px;"></div>
             </header>
             <div class="overlay-content" style="padding: 1.5rem 1rem;">
                 <form id="edit-profile-form" style="display: flex; flex-direction: column; gap: 1.25rem;">
@@ -1042,6 +1131,17 @@
                 <button id="success-modal-btn" class="btn btn-primary">Continuar</button>
             </div>
         </div>
+
+        <!-- Help / Financeiro Warning Overlay Modal -->
+        <div id="profile-warning-overlay" class="modal-overlay" style="display: none; justify-content: center; align-items: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(15px); z-index: 2000;">
+            <div class="success-modal" style="border: 1px solid rgba(168,85,247,0.3); background: #111; max-width: 320px; width: 90%; text-align: center; padding: 2.2rem 1.5rem; border-radius: 24px; box-shadow: 0 10px 40px rgba(168,85,247,0.25); display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                <div style="font-size: 3rem; margin-bottom: 0.5rem; line-height: 1;" id="profile-warning-icon">🚧</div>
+                <h3 id="profile-warning-title" style="color: #fff; font-size: 1.3rem; font-weight: 800; margin: 0;">Ajuda</h3>
+                <p id="profile-warning-message" style="color: #aaa; font-size: 0.85rem; line-height: 1.5; margin: 5px 0 1.25rem 0;">Esta funcionalidade estará disponível na próxima atualização oficial do aplicativo.</p>
+                <button onclick="window.closeProfileWarningOverlay()" class="btn btn-primary" style="width: 100%; border-radius: 12px; padding: 0.75rem; font-weight: 800; background: linear-gradient(135deg, #a855f7, #6b21a8); border: none; color: #fff; cursor: pointer;">Entendido</button>
+                <button id="profile-warning-delete-btn" onclick="window.requestAccountDeletion()" class="btn btn-secondary" style="display: none; width: 100%; border-radius: 12px; padding: 0.75rem; font-weight: 800; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; cursor: pointer; margin-top: 8px; font-family: inherit; font-size: 0.85rem; transition: all 0.2s ease;">Apagar Minha Conta</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1051,6 +1151,40 @@
             localStorage.setItem('user_name', payload.name);
             localStorage.setItem('user_email', payload.email);
             localStorage.setItem('user_photo', payload.picture);
+            
+            // Generate or retrieve a persistent user_id for this email (deterministic for consistent profile association)
+            let userId = localStorage.getItem('user_id');
+            if (!userId || userId === '00000000-0000-0000-0000-000000000000') {
+                // Generate a clean random UUID
+                userId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+                localStorage.setItem('user_id', userId);
+            }
+            
+            // Sync/Upsert profile in Supabase so appointments and chats work natively
+            if (window.supabaseClient) {
+                try {
+                    await window.supabaseClient.from('profiles').upsert({
+                        id: userId,
+                        full_name: payload.name,
+                        email: payload.email,
+                        avatar_url: payload.picture,
+                        user_type: 'client',
+                        points: 10
+                    });
+                    console.log("Google Login: Profile synced to Supabase successfully.");
+                } catch (err) {
+                    console.warn("Google Login: Could not sync profile to Supabase:", err);
+                }
+            } else {
+                console.warn("Google Login: supabaseClient not ready yet.");
+            }
+
+            if (window.updateUserUI) {
+                window.updateUserUI();
+            }
             window.location.hash = '#home';
         }
     </script>
@@ -1156,6 +1290,66 @@
                 <span>+</span> Adicionar Serviço
             </button>
             <p id="catalogo-limit-msg" style="color: #666; font-size: 0.75rem; text-align: center; margin-top: 10px; display: none;">Você atingiu o limite do seu plano. <a href="javascript:void(0)" onclick="showOverlay('plans-selection')" style="color: #a855f7; font-weight: 700;">Faça Upgrade</a></p>
+        </div>
+    </div>
+    
+    <!-- Products Manager Overlay (Plano Plus Only) -->
+    <div id="produtos-overlay" class="screen overlay">
+        <header class="overlay-header">
+            <button class="back-btn" onclick="window.hideProductsManager()">✕</button>
+            <h3>Meus Produtos Plus</h3>
+            <div style="width: 40px;"></div>
+        </header>
+        <div class="overlay-content" style="padding: 1.5rem 1rem;">
+            <div id="produtos-plan-info" style="background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.4); padding: 12px; border-radius: 12px; margin-bottom: 1.5rem; text-align: center;">
+                <span style="color: #fff; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    ✨ Plano Ativo: <span id="produtos-current-plan" style="color: #FCD34D;">Plano Plus</span>
+                </span>
+            </div>
+            
+            <div id="produtos-items-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 1.5rem;">
+                <!-- Preenchido dinamicamente -->
+            </div>
+
+            <button id="btn-add-product" class="btn btn-primary" onclick="window.openAddProductForm()" style="width: 100%; height: 55px; border-radius: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; background: #a855f7; border: none; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);">
+                <span>+</span> Adicionar Produto
+            </button>
+        </div>
+    </div>
+
+    <!-- Add Product Modal Form -->
+    <div id="add-product-modal" class="screen overlay" style="z-index: 1100;">
+        <header class="overlay-header">
+            <button class="back-btn" onclick="window.closeAddProductForm()">✕</button>
+            <h3>Novo Produto</h3>
+            <div style="width: 40px;"></div>
+        </header>
+        <div class="overlay-content" style="padding: 1.5rem 1rem;">
+            <form id="add-product-form" onsubmit="window.saveNewProduct(event)" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <div class="input-group">
+                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Nome do Produto</label>
+                    <input type="text" id="prod-name" placeholder="Ex: Cera Modeladora Matte" required style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                </div>
+                
+                <div class="input-group">
+                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Descrição / Informações</label>
+                    <textarea id="prod-desc" placeholder="Ex: Fixação forte com efeito matte opaco. Ideal para cabelos curtos e médios." required style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%; min-height: 80px; resize: vertical; font-family: inherit;"></textarea>
+                </div>
+
+                <div class="input-group">
+                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Preço (R$)</label>
+                    <input type="number" step="0.01" id="prod-price" placeholder="Ex: 45.90" required style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                </div>
+
+                <div class="input-group">
+                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">URL da Imagem / Foto do Produto</label>
+                    <input type="url" id="prod-img" placeholder="Ex: https://link.da/foto.jpg" style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; height: 55px; border-radius: 16px; font-weight: 800; background: #a855f7; border: none; margin-top: 1rem; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);">
+                    Salvar Produto
+                </button>
+            </form>
         </div>
     </div>
     

@@ -19,18 +19,28 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+html {
+    background-color: #000000;
+}
+
 body {
     font-family: 'Inter', sans-serif;
     background-color: #000000; /* Outer container background */
     color: var(--text);
     overflow: hidden;
     height: 100vh;
+    height: calc(var(--vh, 1vh) * 100);
+    height: 100dvh;
     width: 100vw;
+    transform: translateY(-1vh) !important;
+    transform: translateY(-1dvh) !important;
 }
 
 #app {
     position: relative;
     height: 100%;
+    height: calc(var(--vh, 1vh) * 100);
+    height: 100dvh;
     width: 100%;
     background: linear-gradient(135deg, #000000 0%, #1a1a1a 40%, #333333 80%, #ffffff 100%);
     background-attachment: fixed;
@@ -38,7 +48,10 @@ body {
     border: 12px solid #000000; /* Moldura preta grossa */
     box-sizing: border-box;
     overflow: hidden;
+    transform: translateY(-1vh);
+    transform: translateY(-1dvh);
 }
+
 
 .screen {
     position: absolute;
@@ -57,7 +70,16 @@ body {
 }
 
 .screen.overlay {
-    z-index: 100;
+    position: fixed !important;
+    top: 12px;
+    left: 12px;
+    width: calc(100% - 24px);
+    height: calc(100% - 24px);
+    border-radius: 20px;
+    z-index: 1000;
+    box-sizing: border-box;
+    overflow-y: auto;
+    background-color: var(--bg);
     animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -296,22 +318,22 @@ input:focus, select:focus, textarea:focus {
 }
 
 .btn-primary {
-    background: #000000;
+    background: #a855f7;
     color: #ffffff;
-    border: 1px solid #333;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
 }
 
 .btn-primary:hover {
-    background: #111;
-    border-color: #555;
+    background: #9333ea;
+    border-color: rgba(168, 85, 247, 0.6);
     transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4);
 }
-
-
 
 .btn-primary:active {
     transform: scale(0.98);
-    background: #e0e0e0;
+    background: #7e22ce;
 }
 
 .btn-outline {
@@ -465,15 +487,48 @@ input:focus, select:focus, textarea:focus {
     display: flex;
     justify-content: space-around;
     align-items: center;
-    padding: 1.25rem 0.5rem;
+    padding: 1rem 0.5rem;
     flex-shrink: 0;
-    background: rgba(0, 0, 0, 0.7); /* Semi-transparência preta */
-    backdrop-filter: blur(20px); /* Efeito de vidro jateado */
+    background: rgba(0, 0, 0, 0.85); /* Premium opaque black background */
+    backdrop-filter: blur(20px); /* Glassmorphism blur */
     -webkit-backdrop-filter: blur(20px);
     z-index: 100;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(168, 85, 247, 0.25);
     position: sticky;
-    top: 0;
+    top: 1vh !important;
+    top: 1dvh !important;
+    margin-top: 1vh !important;
+    margin-top: 1dvh !important;
+}
+
+#profile-gray-cover {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 32px;
+    background: #555555;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0;
+    animation: profileGrayCoverAnim 7s infinite ease-in-out;
+}
+
+@keyframes profileGrayCoverAnim {
+    0%, 82% {
+        opacity: 0;
+    }
+    85.71% { /* Entra esmaecendo suavemente (6.0s) */
+        opacity: 1;
+    }
+    95.71% { /* Mantém totalmente visível até 6.7s */
+        opacity: 1;
+    }
+    100% { /* Sai esmaecendo suavemente até 7.0s */
+        opacity: 0;
+    }
 }
 
 .top-tab {
@@ -490,6 +545,8 @@ input:focus, select:focus, textarea:focus {
     font-size: 1.3rem;
     flex-shrink: 0;
     transition: all 0.2s ease;
+    margin-top: 1vh !important;
+    margin-top: 1dvh !important;
 }
 
 .top-tab:hover {
@@ -499,10 +556,13 @@ input:focus, select:focus, textarea:focus {
 }
 
 .top-tab.active {
-    background: transparent;
-    color: #fff;
-    transform: scale(1.15);
-    text-shadow: 0 0 15px rgba(255,255,255,0.5);
+    background: rgba(168, 85, 247, 0.15) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(168, 85, 247, 0.35) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.1) !important;
+    transform: scale(1.1) !important;
+    text-shadow: 0 0 15px rgba(168, 85, 247, 0.4) !important;
 }
 
 .top-tab span, .top-tab i {
@@ -510,6 +570,11 @@ input:focus, select:focus, textarea:focus {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.top-tab[href="#busca"] span {
+    display: inline-block !important;
+    transform: rotate(-45deg) !important;
 }
 
 #nav-home-btn {
@@ -787,22 +852,22 @@ input:focus, select:focus, textarea:focus {
 .user-type-cards {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1rem;
     width: 100%;
-    margin-top: 2.5rem;
+    margin-top: 1.5rem;
 }
 
 .type-card {
     background: #1a1a1a;
     border: 1px solid var(--border);
-    border-radius: 28px;
-    padding: 3rem 2rem;
+    border-radius: 20px;
+    padding: 1.5rem 1.5rem;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.25rem;
+    gap: 0.6rem;
     box-shadow: var(--shadow);
     position: relative;
     overflow: hidden;
@@ -815,25 +880,25 @@ input:focus, select:focus, textarea:focus {
 .type-card:hover {
     border-color: #ffffff;
     background: #000000;
-    transform: translateY(-10px) scale(1.02);
-    box-shadow: 0 25px 50px rgba(0,0,0,0.8), 0 0 30px rgba(255,255,255,0.05);
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.8), 0 0 20px rgba(255,255,255,0.05);
 }
 
 .type-icon {
-    font-size: 4rem;
-    margin-bottom: 0.5rem;
+    font-size: 2.5rem;
+    margin-bottom: 0.2rem;
     filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3));
 }
 
 .type-card h3 {
-    font-size: 1.75rem;
+    font-size: 1.35rem;
     font-weight: 800;
     color: #ffffff;
 }
 
 .type-card p {
-    font-size: 1rem;
-    line-height: 1.6;
+    font-size: 0.85rem;
+    line-height: 1.5;
     color: var(--text-muted);
     max-width: 280px;
 }
@@ -939,30 +1004,54 @@ input:focus, select:focus, textarea:focus {
 .password-wrapper {
     position: relative;
     width: 100%;
+    display: flex;
+    align-items: center;
 }
 
 .password-wrapper input {
     width: 100%;
-    padding-right: 45px;
+    padding-right: 48px !important;
 }
 
-.toggle-password {
-    position: absolute;
-    right: 15px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: pointer;
-    font-size: 1.2rem;
-    user-select: none;
-    opacity: 0.6;
-    transition: opacity 0.2s;
+.btn-toggle-password, .toggle-password {
+    position: absolute !important;
+    right: 12px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 8px !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    font-size: 1.2rem !important;
+    line-height: 1 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    z-index: 10 !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+    opacity: 0.65 !important;
+    transition: opacity 0.2s ease, transform 0.1s ease !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
 }
 
-.toggle-password:hover {
-    opacity: 1;
+.btn-toggle-password:hover, .toggle-password:hover {
+    opacity: 1 !important;
 }
 
-/* Success Modal */
+.btn-toggle-password:active, .toggle-password:active {
+    transform: translateY(-50%) scale(0.9) !important;
+}
+
+.btn-toggle-password svg, .toggle-password svg, .eye-icon-svg {
+    width: 20px !important;
+    height: 20px !important;
+    stroke: #ffffff !important;
+    display: block !important;
+}
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1080,6 +1169,7 @@ input:focus, select:focus, textarea:focus {
 .profile-menu .menu-item {
     display: flex;
     align-items: center;
+    justify-content: center;
     padding: 1.25rem;
     background: #1a1a1a;
     border-radius: 16px;
@@ -1087,6 +1177,7 @@ input:focus, select:focus, textarea:focus {
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     border: 1px solid transparent;
+    position: relative;
 }
 
 .profile-menu .logout {
@@ -1099,20 +1190,24 @@ input:focus, select:focus, textarea:focus {
     background: rgba(176, 133, 245, 0.06) !important;
     border-color: rgba(176, 133, 245, 0.15) !important;
     box-shadow: 0 4px 20px rgba(176, 133, 245, 0.1), inset 0 0 12px rgba(176, 133, 245, 0.05) !important;
-    transform: translateX(5px) translateY(-2px);
+    transform: translateY(-2px);
     border-radius: 16px;
 }
 
 /* Transições e escala para os ícones internos do menu */
 .profile-menu .menu-item .outline-icon,
 .profile-menu .logout .outline-icon {
+    position: absolute;
+    left: 1.25rem;
+    top: 50%;
+    transform: translateY(-50%);
     display: inline-block;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s ease;
 }
 
 .profile-menu .menu-item:hover .outline-icon,
 .profile-menu .logout:hover .outline-icon {
-    transform: scale(1.2);
+    transform: translateY(-50%) scale(1.2);
     text-shadow: 0 0 15px rgba(176, 133, 245, 0.8);
     color: #b085f5 !important; /* Mudar a cor do ícone no hover para roxo pastel */
 }
@@ -1125,10 +1220,15 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 /* Profile Screen */
 .profile-header {
     text-align: center;
-    padding: 3rem 1.5rem;
-    background: linear-gradient(to bottom, #111, var(--bg));
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 2rem;
+    padding: 2rem 1.5rem !important; /* Slightly more compact padding */
+    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%) !important;
+    border-top: 1px solid rgba(168, 85, 247, 0.25) !important;
+    border-bottom: 1px solid rgba(168, 85, 247, 0.25) !important;
+    margin: 0 auto 1.5rem auto !important;
+    width: calc(100% - 2.5rem) !important; /* Shorter border horizontally! */
+    max-width: 420px !important;
+    border-radius: 18px !important; /* Rounded premium floating header card */
+    box-sizing: border-box !important;
 }
 
 .profile-avatar-wrapper {
@@ -1174,15 +1274,16 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 }
 
 .profile-info-card {
-    background: #1a1a1a;
+    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%);
     border-radius: 24px;
-    padding: 1.5rem;
-    border: 1px solid var(--border);
+    padding: 1rem 1.5rem;
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    box-shadow: 0 8px 32px rgba(168, 85, 247, 0.1);
     margin-bottom: 1.5rem;
     display: flex;
     flex-direction: column;
     align-items: center; /* Centralizar conteúdo do card */
-    gap: 1.25rem;
+    gap: 0.6rem;
 }
 
 .info-item {
@@ -1192,8 +1293,8 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
     text-align: center;
     gap: 4px; /* Reduced gap */
     width: 100%;
-    padding: 0.75rem 0.5rem; /* Reduced padding with side room for hover */
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding: 0.4rem 0.5rem; /* Reduced padding to decrease height */
+    border-bottom: 1px solid rgba(168, 85, 247, 0.15);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
 }
@@ -1364,8 +1465,6 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 .map-search-bar button:active {
     transform: scale(0.9);
 }
-    filter: drop-shadow(0 4px 5px rgba(0,0,0,0.5));
-}
 
 #map-picker-container {
     background: #000;
@@ -1384,6 +1483,8 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
         border: 4px solid #333;
         overflow: hidden;
         box-shadow: 0 50px 100px rgba(0,0,0,0.8);
+        transform: translateY(-1vh) !important;
+        transform: translateY(-1dvh) !important;
     }
     
     body {
@@ -1399,6 +1500,8 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
         margin-top: 5vh !important;
         height: 95vh !important;
         border: none !important; /* Remove a moldura grossa no mobile para evitar cortes de layout */
+        transform: translateY(-1vh) !important;
+        transform: translateY(-1dvh) !important;
     }
     .search-input-wrapper select {
         max-width: 90px !important;
@@ -1409,23 +1512,28 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 
 /* Ajustes Editar Perfil */
 #editar-perfil .overlay-header {
-    display: grid;
-    grid-template-columns: 48px 1fr 48px;
-    align-items: center;
-    text-align: center;
-    justify-content: center;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 3rem 1.5rem 1.5rem !important; /* Move down a bit to clear safe area / notches */
+    background: #111111;
+    border-bottom: 1px solid var(--border);
 }
 
 #editar-perfil .overlay-header .back-btn {
-    padding: 0;
-    width: 48px;
-    display: flex;
-    justify-content: center;
+    padding: 0 !important;
+    width: 48px !important;
+    height: 48px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin: 0 !important;
 }
 
 #editar-perfil .overlay-header h3 {
-    margin: 0;
-    width: 100%;
+    margin: 0 !important;
+    text-align: center !important;
+    flex: 1 !important;
 }
 
 #edit-profile-form .btn-primary {
@@ -1434,32 +1542,7 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 }
 
 
-/* Senha e Ícones */
-.password-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.password-wrapper input {
-    padding-right: 40px;
-}
-
-.toggle-password {
-    position: absolute;
-    right: 15px;
-    cursor: pointer;
-    font-size: 1.1rem;
-    filter: grayscale(1) opacity(0.4);
-    transition: all 0.2s ease;
-    user-select: none;
-    z-index: 10;
-    pointer-events: auto;
-}
-
-.toggle-password:hover {
-    filter: grayscale(1) opacity(0.8);
-}
+/* Senha e Ícones styled globally in line 943 */
 
 /* Search Screen Styles */
 .search-header {
@@ -2006,6 +2089,7 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
     padding: 0 !important;
     overflow-y: hidden !important;
     height: 100% !important;
+    background-color: #000000 !important;
 }
 
 #busca.sub-screen.active {
@@ -2015,7 +2099,9 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 #busca .search-header {
     flex-shrink: 0;
     padding: 1.5rem 1.5rem 1rem 1.5rem;
-    background: #000;
+    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%);
+    border-top: 1px solid rgba(168, 85, 247, 0.25);
+    border-bottom: 1px solid rgba(168, 85, 247, 0.25);
     margin-top: -2vh;
 }
 
@@ -2044,15 +2130,401 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
     background: var(--primary-accent);
 }
 
+#busca-bottom-container {
+    flex-shrink: 0;
+    background: linear-gradient(to bottom, rgba(168, 85, 247, 0.05) 0%, #000000 40px, #000000 100%);
+    width: 100%;
+    border-top: 1px solid rgba(168, 85, 247, 0.25);
+    padding: 0.5rem 0 var(--safe-bottom, 8px) 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+}
+
 #busca #recent-professionals-container {
     flex-shrink: 0;
-    background: linear-gradient(to top, rgba(0,0,0,1) 90%, rgba(0,0,0,0));
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    padding: 0.85rem 1.5rem 70px 1.5rem !important; /* Shifted down by reducing top/bottom padding */
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
 }
 
+#login {
+    display: none;
+    flex-direction: column;
+    justify-content: flex-start !important; /* Prevents flexbox vertical cut-off in scrolling */
+    align-items: center !important; /* Centering horizontally */
+    height: 100% !important;
+    overflow-y: auto !important; /* Enable vertical scroll if viewport is too small */
+    -webkit-overflow-scrolling: touch;
+    padding: 1rem 0 !important;
+}
+
+#login.active {
+    display: flex;
+}
+
+#login .auth-container {
+    margin: auto 0 !important; /* Automatically centers vertically if space allows, scrolls if not! */
+    width: 100%;
+    max-width: 420px;
+    padding: 1.5rem !important; /* Smaller padding for mobile fit */
+    gap: 0.85rem !important; /* Tighter gap to fit smaller devices */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    transform: none !important; /* Reset previous translateY shifts */
+}
+
+/* Make sure header text is concise and well spaced */
+#login .auth-container h2 {
+    font-size: 1.8rem;
+    margin-bottom: 0.25rem;
+}
+
+#login .auth-container p {
+    font-size: 0.9rem;
+    line-height: 1.3;
+    margin-bottom: 0.5rem;
+}
+
+/* Adjust the massive inline top margin of the submit button */
+#login #btn-login-submit {
+    margin: 1.5rem auto 0.5rem !important;
+    padding: 0.9rem 1.5rem !important;
+}
+
+/* Ensure divider has tight margin */
+#login .auth-divider {
+    margin: 0.5rem 0 !important;
+}
+
+/* Google Sign-In Container reset and styling */
+#login #google-login-container {
+    transform: none !important; /* Reset previous shift */
+    margin: 1rem auto !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+}
+
+#login #google-login-container > div {
+    margin: 0 auto !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+/* Footer reset and styling */
+#login .auth-footer {
+    transform: none !important; /* Reset previous shift */
+    margin-top: 0.75rem !important;
+}
+
+/* Custom Scrolling Marquee for Collapsed Products View */
+@keyframes productsMarquee {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.products-marquee-active {
+    display: inline-block;
+    white-space: nowrap;
+    animation: productsMarquee 48s linear infinite;
+}
+
+.products-marquee-active:hover {
+    animation-play-state: paused;
+}
+
+/* Beautiful Premium Violet Screen Header Styling used across all Screens */
+.screen-header {
+    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%) !important;
+    border-top: 1px solid rgba(168, 85, 247, 0.25) !important;
+    border-bottom: 1px solid rgba(168, 85, 247, 0.25) !important;
+    padding: 1.1rem 1.5rem !important;
+    box-sizing: border-box !important;
+    margin: 0 auto 1.5rem auto !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: calc(100% - 2.5rem) !important; /* Shorter border horizontally! */
+    max-width: 420px !important;
+    border-radius: 18px !important; /* Beautiful rounded premium header */
+}
+
+/* ==========================================
+   LIGHT MONOCHROME THEME (WHITE, BLACK, GRAY)
+   ========================================== */
+.light-theme {
+    --bg: #ffffff;
+    --bg-alt: #f4f4f4;
+    --text: #000000;
+    --text-muted: #555555;
+    --border: #d4d4d4;
+    --card-bg: #fafafa;
+    --primary-accent: #000000;
+    --primary: #000000;
+    --primary-dark: #222222;
+    --shadow: 0 10px 35px rgba(0, 0, 0, 0.06);
+}
+
+.light-theme body {
+    background-color: #f0f0f0 !important;
+}
+
+.light-theme #app {
+    background: linear-gradient(135deg, #e4e4e4 0%, #ffffff 50%, #e8e8e8 100%) !important;
+    border-color: #222222 !important; /* Premium dark charcoal smartphone frame bezel */
+}
+
+/* Screen Headers with sleek charcoal/black borders instead of violet */
+.light-theme .screen-header {
+    background: linear-gradient(to bottom, #ffffff 0%, rgba(0, 0, 0, 0.03) 50%, #ffffff 100%) !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.15) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Sleek bottom menu items styling in light theme */
+.light-theme .menu-item {
+    background: #fcfcfc !important;
+    border-color: #e0e0e0 !important;
+}
+
+.light-theme .menu-item span {
+    color: #000000 !important;
+}
+
+.light-theme .menu-item:hover {
+    background: rgba(0, 0, 0, 0.03) !important;
+    border-color: rgba(0, 0, 0, 0.12) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+}
+
+.light-theme .menu-item .outline-icon {
+    color: #000000 !important;
+    -webkit-text-stroke: 1.5px #000000 !important;
+}
+
+.light-theme .logout {
+    border-top: 1px solid #e0e0e0 !important;
+}
+
+.light-theme .logout span {
+    color: #777777 !important;
+}
+
+.light-theme .logout .outline-icon {
+    color: #777777 !important;
+    -webkit-text-stroke: 1.5px #777777 !important;
+}
+
+/* Tab bar active indicator */
+.light-theme .top-tab.active {
+    background: rgba(0, 0, 0, 0.08) !important;
+    color: #000000 !important;
+    border: 1px solid rgba(0, 0, 0, 0.25) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04) !important;
+    text-shadow: none !important;
+}
+
+.light-theme .top-tab:hover {
+    color: #000000 !important;
+}
+
+/* Dashboards and Feed elements styling in Light theme */
+.light-theme .dash-card {
+    background: #ffffff !important;
+    border-color: #e0e0e0 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02) !important;
+}
+
+.light-theme .dash-card h4, .light-theme .dash-card p {
+    color: #000000 !important;
+}
+
+.light-theme .home-announcements {
+    background: #fafafa !important;
+    border-color: #e0e0e0 !important;
+}
+
+.light-theme .announcement-item {
+    border-left-color: #000000 !important;
+}
+
+.light-theme .announcement-item p {
+    color: #333333 !important;
+}
+
+/* Category Filter and Input elements styling in Light theme */
+.light-theme #category-filter, .light-theme #booking-coupon-select {
+    background: #ffffff !important;
+    border-color: #cccccc !important;
+    color: #000000 !important;
+}
+
+.light-theme #search-input {
+    background: #ffffff !important;
+    border-color: #cccccc !important;
+    color: #000000 !important;
+}
+
+.light-theme #search-input::placeholder {
+    color: #888888 !important;
+}
+
+.light-theme #search-sort-toggle {
+    background: rgba(0, 0, 0, 0.05) !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
+    color: #000000 !important;
+}
+
+.light-theme #search-sort-badge {
+    background: rgba(0, 0, 0, 0.9) !important;
+    border-color: rgba(0, 0, 0, 0.9) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.light-theme .btn-primary {
+    background: linear-gradient(135deg, #222222, #000000) !important;
+    border: none !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15) !important;
+}
+
+.light-theme .btn-primary:hover {
+    background: #333333 !important;
+}
+
+/* Map screen, Modals, and other dynamic overlays */
+.light-theme .success-modal {
+    background: #ffffff !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+.light-theme .success-modal h3 {
+    color: #000000 !important;
+}
+
+.light-theme .success-modal p {
+    color: #555555 !important;
+}
+
+.light-theme .profile-info-card {
+    background: #fafafa !important;
+    border-color: #e0e0e0 !important;
+}
+
+.light-theme .info-item span {
+    color: #555555 !important;
+}
+
+.light-theme .info-item p {
+    color: #000000 !important;
+}
+
+.light-theme .info-value.points {
+    color: #000000 !important;
+    text-shadow: none !important;
+}
+
+/* ==========================================
+   HIGH CONTRAST THEME SPECIFIC OVERRIDES
+   ========================================== */
+
+/* 1. Rede de Cabeleireiros e Barbearia text in Home -> Crisp Solid Black */
+.light-theme .home-intro h2 {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    -webkit-text-fill-color: #000000 !important;
+    color: #000000 !important;
+}
+
+/* 2. Busca Screen -> Swap all dark/black elements to white, and all light/white elements to black */
+.light-theme #busca {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+.light-theme #busca .search-header {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+.light-theme #busca .search-results {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+/* Swap card background to white, and borders/texts to black */
+.light-theme #busca .prof-card {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: 1px solid #d4d4d4 !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+}
+
+.light-theme #busca .prof-card h3,
+.light-theme #busca .prof-card h4,
+.light-theme #busca .prof-card p,
+.light-theme #busca .prof-card span,
+.light-theme #busca .prof-card div,
+.light-theme #busca .prof-card strong,
+.light-theme #busca .prof-card small {
+    color: #000000 !important;
+}
+
+.light-theme #busca .prof-card .text-muted,
+.light-theme #busca .prof-card p[style*="color: #666"],
+.light-theme #busca .prof-card p[style*="color: #888"],
+.light-theme #busca .prof-card p[style*="color: #aaa"],
+.light-theme #busca .prof-card span[style*="color: #666"] {
+    color: #444444 !important;
+}
+
+.light-theme #busca .prof-card .rating-stars,
+.light-theme #busca .prof-card span[style*="color: #ffd700"] {
+    color: #000000 !important; /* Estrela preta no tema claro */
+}
+
+/* Category filter inside Busca screen -> black bg, white text to match dark wrapper */
+.light-theme #busca #category-filter {
+    background: #111111 !important;
+    background-color: #111111 !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(176, 133, 245, 0.4) !important;
+}
+
+/* Search input bar inside Busca screen -> dark bg, white text to match dark wrapper */
+.light-theme #busca #search-input {
+    background: transparent !important;
+    background-color: transparent !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+.light-theme #busca #search-input::placeholder {
+    color: #888888 !important;
+}
+
+/* Toggle filters buttons inside Busca screen */
+.light-theme #busca #search-sort-toggle {
+    background: #f0f0f0 !important;
+    border: 1px solid #cccccc !important;
+    color: #000000 !important;
+}
+
+.light-theme #busca #btn-search-trigger svg {
+    stroke: #ffffff !important;
+}
+
+.light-theme #busca #btn-search-trigger stop[offset="0%"] {
+    stop-color: #000000 !important;
+}
+
+.light-theme #busca #btn-search-trigger stop[offset="100%"] {
+    stop-color: #333333 !important;
+}
 
