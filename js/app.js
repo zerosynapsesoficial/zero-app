@@ -208,8 +208,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log("Recovering mock session for:", hasEmail);
                 const userType = localStorage.getItem('user_type') || 'client';
                 const userName = localStorage.getItem('user_name') || 'Usuário';
+                let userId = localStorage.getItem('user_id');
+                
+                if (hasEmail !== 'ZeroZynapses' && (!userId || userId === '00000000-0000-0000-0000-000000000000')) {
+                    // Force resolve true user_id from Supabase profiles using email
+                    try {
+                        const queryPromise = supabaseClient
+                            .from('profiles')
+                            .select('id')
+                            .eq('email', hasEmail.trim().toLowerCase())
+                            .maybeSingle();
+                        
+                        const result = await Promise.race([
+                            queryPromise,
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 10000))
+                        ]);
+                        
+                        if (result && result.data && result.data.id) {
+                            userId = result.data.id;
+                            localStorage.setItem('user_id', userId);
+                            console.log("Mock recovery: user_id healed from db to", userId);
+                        }
+                    } catch (err) {
+                        console.warn("Could not query user_id by email during mock recovery:", err);
+                    }
+                }
+
                 return {
-                    id: localStorage.getItem('user_id') || '00000000-0000-0000-0000-000000000000',
+                    id: userId || '00000000-0000-0000-0000-000000000000',
                     email: hasEmail === 'ZeroZynapses' ? 'lara.cabeleireira@teste.com' : hasEmail,
                     user_metadata: {
                         full_name: userName,
@@ -1149,6 +1175,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem('user_type', profile.user_type || 'client');
                     localStorage.setItem('user_name', profile.full_name || data.user.email);
                     localStorage.setItem('user_email', data.user.email);
+                    localStorage.setItem('user_id', data.user.id); // Save user_id!
                     localStorage.setItem('user_subscription_plan', profile.subscription_plan || 'Free');
                     localStorage.setItem('user_points', profile.points || 0);
                 }
