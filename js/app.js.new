@@ -2225,17 +2225,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (input) {
                 if (input.type === 'password') {
                     input.type = 'text';
-                    toggleBtn.textContent = '🔒';
+                    toggleBtn.textContent = '🙈';
                 } else {
                     input.type = 'password';
-                    toggleBtn.textContent = '👁️';
+                    toggleBtn.textContent = '👀';
                 }
             }
         }
     };
 
     document.addEventListener('click', togglePasswordVisibility);
-    document.addEventListener('mousedown', togglePasswordVisibility);
 
     // --- Map Picker Logic ---
     let pickerMap;

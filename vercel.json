@@ -3,6 +3,12 @@
     {
       "source": "/api/supabase/:path*",
       "destination": "https://oryguljbqcphbtiapvwk.supabase.co/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
-  ]
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 }

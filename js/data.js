@@ -28,7 +28,7 @@ export const DATA = {
     },
     {
       id: 'prof-102', user_type: 'professional', full_name: 'Ricardo Barber', category: 'Barbearia', specialty: 'Barba Premium e Degradê',
-      rating: 4.8, reviews: 120, price: 35, priceUnit: 'serviço',
+      rating: 4.8, reviews: 120, price: 35, priceUnit: 'serviço', subscription_plan: 'Plano Plus',
       city: 'São Paulo', address: 'Avenida Bento de Souza, 247 - Santa Edwiges', verified: true, points: 890,
       bio: 'Referência em barboterapia e cortes fade na região. Ambiente climatizado e café cortesia para todos os clientes.',
       avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200',

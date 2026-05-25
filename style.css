@@ -165,7 +165,8 @@ body {
 }
 
 #edit-profile-form .input-group label,
-#form-professional .input-group label {
+#form-professional .input-group label,
+#form-client .input-group label {
     text-align: center;
 }
 
@@ -572,7 +573,13 @@ input:focus, select:focus, textarea:focus {
     justify-content: center;
 }
 
+.top-tab[href="#busca"] {
+    width: 57.6px !important;
+    height: 57.6px !important;
+}
+
 .top-tab[href="#busca"] span {
+    font-size: 1.44rem !important;
     display: inline-block !important;
     transform: rotate(-45deg) !important;
 }
@@ -908,10 +915,30 @@ input:focus, select:focus, textarea:focus {
     overflow-y: auto;
 }
 
+/* Shift all registration flow screens up by 5% of the viewport height */
+#register,
+#user-type-selection,
+#register-client,
+#register-professional {
+    transform: translateY(-5vh) !important;
+    height: calc(100% + 5vh) !important;
+}
+
 #register-client .auth-container, 
 #register-professional .auth-container {
     margin-top: 0;
-    padding-top: 4rem;
+    padding-top: 1rem;
+}
+
+.profile-uploads {
+    display: flex;
+    justify-content: center;
+    gap: 2.5rem;
+    margin: 1.5rem 0 3rem;
+}
+
+.profile-uploads .profile-pic-upload {
+    margin: 0;
 }
 
 .profile-pic-upload {
@@ -1140,6 +1167,8 @@ input:focus, select:focus, textarea:focus {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
+    align-items: center;
+    text-align: center;
     gap: 0.5rem;
 }
 
@@ -1221,9 +1250,9 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 .profile-header {
     text-align: center;
     padding: 2rem 1.5rem !important; /* Slightly more compact padding */
-    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%) !important;
-    border-top: 1px solid rgba(168, 85, 247, 0.25) !important;
-    border-bottom: 1px solid rgba(168, 85, 247, 0.25) !important;
+    background: linear-gradient(to bottom, #000000 0%, rgba(192, 132, 252, 0.2) 50%, #000000 100%) !important;
+    border-top: 1px solid rgba(192, 132, 252, 0.45) !important;
+    border-bottom: 1px solid rgba(192, 132, 252, 0.45) !important;
     margin: 0 auto 1.5rem auto !important;
     width: calc(100% - 2.5rem) !important; /* Shorter border horizontally! */
     max-width: 420px !important;
@@ -1274,11 +1303,11 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 }
 
 .profile-info-card {
-    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%);
+    background: linear-gradient(to bottom, #000000 0%, rgba(192, 132, 252, 0.2) 50%, #000000 100%);
     border-radius: 24px;
     padding: 1rem 1.5rem;
-    border: 1px solid rgba(168, 85, 247, 0.25);
-    box-shadow: 0 8px 32px rgba(168, 85, 247, 0.1);
+    border: 1px solid rgba(192, 132, 252, 0.45);
+    box-shadow: 0 8px 32px rgba(192, 132, 252, 0.15);
     margin-bottom: 1.5rem;
     display: flex;
     flex-direction: column;
@@ -1312,21 +1341,21 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 }
 
 .info-icon {
-    font-size: 1.8rem; /* Slightly smaller icon */
+    font-size: 1.7rem !important; /* Always identical size */
     color: #b085f5 !important; /* Pastel purple */
     margin-bottom: 2px;
     opacity: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), text-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .info-item:hover .info-icon {
     transform: scale(1.15);
     text-shadow: 0 0 15px rgba(176, 133, 245, 0.8);
-}
-
-/* Reduzir o tamanho do símbolo de Tipo de Conta para harmonia perfeita */
-.info-item:nth-of-type(3) .info-icon {
-    font-size: 1.45rem !important;
 }
 
 .info-text {
@@ -1496,17 +1525,60 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 }
 
 @media (max-width: 599px) {
+    body {
+        height: 100dvh !important;
+        overflow: hidden !important;
+        margin: 0 !important;
+        transform: none !important;
+    }
     #app {
-        margin-top: 5vh !important;
-        height: 95vh !important;
+        margin-top: 0 !important;
+        height: 100dvh !important;
+        overflow: hidden !important;
         border: none !important; /* Remove a moldura grossa no mobile para evitar cortes de layout */
-        transform: translateY(-1vh) !important;
-        transform: translateY(-1dvh) !important;
+        transform: none !important;
+    }
+    .top-tab-bar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        margin-top: 0 !important;
+        padding: calc(0.5rem + env(safe-area-inset-top, 0px)) 0.25rem 0.5rem 0.25rem !important;
+        height: calc(62px + env(safe-area-inset-top, 0px)) !important;
+        box-sizing: border-box !important;
+        z-index: 1000 !important;
+    }
+    .top-tab {
+        margin-top: 0 !important;
+        width: 42px !important;
+        height: 42px !important;
+        font-size: 1.15rem !important;
+    }
+    .sub-screen {
+        margin-top: calc(62px + env(safe-area-inset-top, 0px)) !important;
+        height: calc(100dvh - 62px - env(safe-area-inset-top, 0px)) !important;
+        box-sizing: border-box !important;
+    }
+    #busca.sub-screen {
+        margin-top: calc(62px + env(safe-area-inset-top, 0px)) !important;
+        height: calc(100dvh - 62px - env(safe-area-inset-top, 0px)) !important;
+        box-sizing: border-box !important;
     }
     .search-input-wrapper select {
         max-width: 90px !important;
         font-size: 0.75rem !important;
         padding: 0 4px !important;
+    }
+    #busca #search-results {
+        flex: 1 !important;
+        min-height: 120px !important;
+        max-height: none !important;
+    }
+    #drawers-toggle-bar button {
+        padding: 0.45rem 0.8rem !important;
+        font-size: 0.75rem !important;
+        gap: 4px !important;
     }
 }
 
@@ -2099,9 +2171,9 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 #busca .search-header {
     flex-shrink: 0;
     padding: 1.5rem 1.5rem 1rem 1.5rem;
-    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%);
-    border-top: 1px solid rgba(168, 85, 247, 0.25);
-    border-bottom: 1px solid rgba(168, 85, 247, 0.25);
+    background: linear-gradient(to bottom, #000000 0%, rgba(192, 132, 252, 0.2) 50%, #000000 100%);
+    border-top: 1px solid rgba(192, 132, 252, 0.45);
+    border-bottom: 1px solid rgba(192, 132, 252, 0.45);
     margin-top: -2vh;
 }
 
@@ -2132,9 +2204,9 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 
 #busca-bottom-container {
     flex-shrink: 0;
-    background: linear-gradient(to bottom, rgba(168, 85, 247, 0.05) 0%, #000000 40px, #000000 100%);
+    background: linear-gradient(to bottom, rgba(192, 132, 252, 0.2) 0%, #000000 40px, #000000 100%);
     width: 100%;
-    border-top: 1px solid rgba(168, 85, 247, 0.25);
+    border-top: 1px solid rgba(192, 132, 252, 0.45);
     padding: 0.5rem 0 var(--safe-bottom, 8px) 0;
     display: flex;
     flex-direction: column;
@@ -2202,7 +2274,7 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 /* Google Sign-In Container reset and styling */
 #login #google-login-container {
     transform: none !important; /* Reset previous shift */
-    margin: 1rem auto !important;
+    margin: calc(1rem + 5vh) auto 1rem !important;
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
@@ -2231,7 +2303,7 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 .products-marquee-active {
     display: inline-block;
     white-space: nowrap;
-    animation: productsMarquee 48s linear infinite;
+    animation: productsMarquee 85s linear infinite;
 }
 
 .products-marquee-active:hover {
@@ -2240,9 +2312,9 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 
 /* Beautiful Premium Violet Screen Header Styling used across all Screens */
 .screen-header {
-    background: linear-gradient(to bottom, #000000 0%, rgba(168, 85, 247, 0.06) 50%, #000000 100%) !important;
-    border-top: 1px solid rgba(168, 85, 247, 0.25) !important;
-    border-bottom: 1px solid rgba(168, 85, 247, 0.25) !important;
+    background: linear-gradient(to bottom, #000000 0%, rgba(192, 132, 252, 0.2) 50%, #000000 100%) !important;
+    border-top: 1px solid rgba(192, 132, 252, 0.45) !important;
+    border-bottom: 1px solid rgba(192, 132, 252, 0.45) !important;
     padding: 1.1rem 1.5rem !important;
     box-sizing: border-box !important;
     margin: 0 auto 1.5rem auto !important;
@@ -2305,6 +2377,13 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 .light-theme .menu-item .outline-icon {
     color: #000000 !important;
     -webkit-text-stroke: 1.5px #000000 !important;
+    filter: none !important;
+}
+
+/* Corrige especificamente ícones com filtro inline (ex: 🎫 Meus Cupons) no tema claro */
+.light-theme .menu-item .outline-icon[style*="filter"],
+.light-theme .menu-item .coupon-icon {
+    filter: grayscale(1) brightness(0) !important;
 }
 
 .light-theme .logout {
@@ -2430,11 +2509,18 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
     text-shadow: none !important;
 }
 
+/* Force Plans Selection Title to be White and larger in Light Theme */
+.light-theme #plans-selection .overlay-header h3,
+.light-theme #plans-selection h3 {
+    color: #ffffff !important;
+    font-size: 1.8rem !important;
+}
+
 /* ==========================================
    HIGH CONTRAST THEME SPECIFIC OVERRIDES
    ========================================== */
 
-/* 1. Rede de Cabeleireiros e Barbearia text in Home -> Crisp Solid Black */
+/* 1. Rede de Estética text in Home -> Crisp Solid Black */
 .light-theme .home-intro h2 {
     background: none !important;
     -webkit-background-clip: initial !important;
@@ -2458,10 +2544,38 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
     background-color: #ffffff !important;
 }
 
+.light-theme #busca .search-category-text {
+    color: #888888 !important; /* Gray/Cinza color for light theme */
+}
+
+/* Swap search card background to white, and borders/texts to black in Light Theme */
+.light-theme #busca .card {
+    background: linear-gradient(135deg, #fafafa 0%, #eaeaea 100%) !important;
+    border: 1px solid #d4d4d4 !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+}
+
+.light-theme #busca .card h3,
+.light-theme #busca .card h4,
+.light-theme #busca .card p,
+.light-theme #busca .card span,
+.light-theme #busca .card div,
+.light-theme #busca .card strong,
+.light-theme #busca .card small {
+    color: #000000 !important;
+}
+
+.light-theme #busca .card .search-category-text {
+    color: #888888 !important; /* Gray/Cinza color for category */
+}
+
+.light-theme #busca .card span[style*="color: #FCD34D"] {
+    color: #D97706 !important; /* Amber color for price in light theme */
+}
+
 /* Swap card background to white, and borders/texts to black */
 .light-theme #busca .prof-card {
-    background: #ffffff !important;
-    background-color: #ffffff !important;
+    background: linear-gradient(135deg, #fafafa 0%, #eaeaea 100%) !important;
     border: 1px solid #d4d4d4 !important;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
 }
@@ -2527,4 +2641,302 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 .light-theme #busca #btn-search-trigger stop[offset="100%"] {
     stop-color: #333333 !important;
 }
+
+/* ==========================================
+   CUSTOM LIGHT THEME OVERRIDES (USER PREFERENCES)
+   ========================================== */
+
+/* 1. Gray background for select boxes / inputs */
+.light-theme .custom-select-trigger {
+    background: #f0f0f0 !important;
+    border-color: #cccccc !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important;
+}
+
+.light-theme #prof-search-input {
+    color: #000000 !important;
+}
+
+.light-theme #prof-search-input::placeholder {
+    color: #888888 !important;
+}
+
+.light-theme #prof-dropdown-options {
+    background: #f9f9f9 !important;
+    border-color: #cccccc !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
+}
+
+.light-theme #prof-dropdown-options div {
+    color: #333333 !important;
+}
+
+.light-theme #prof-dropdown-options div:hover {
+    background: #eeeeee !important;
+    color: #000000 !important;
+}
+
+.light-theme #admin-select-client,
+.light-theme #client-agenda-date {
+    background: #f0f0f0 !important;
+    color: #000000 !important;
+    border-color: #cccccc !important;
+}
+
+/* 2. Change white texts to black in light theme */
+.light-theme #prof-selected-name,
+.light-theme #prof-service-name {
+    color: #000000 !important;
+}
+
+.light-theme #prof-selected-phone,
+.light-theme #prof-selected-address {
+    color: #333333 !important;
+}
+
+.light-theme .screen-header p {
+    color: #333333 !important;
+}
+
+/* 3. Available time slots styling (Default state vs Active/Selected state) */
+.light-theme #client-time-slots button:not(.selected-slot) {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-color: #cccccc !important;
+}
+
+.light-theme #client-time-slots button:not(.selected-slot):hover {
+    background: #f0f0f0 !important;
+}
+
+/* 4. Map green money/values/percentages to a rich amber-yellow */
+.light-theme [style*="color: #10B981"],
+.light-theme [style*="color: rgb(16, 185, 129)"],
+.light-theme #prof-service-price,
+.light-theme #prof-service-price span[style*="color: #10B981"],
+.light-theme #prof-service-price span[style*="color: rgb(16, 185, 129)"] {
+    color: #D97706 !important;
+}
+
+
+/* Admin Chat Selector */
+.admin-chat-selector {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    font-family: 'Inter', sans-serif;
+    min-width: 150px;
+    max-width: 200px;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="7" viewBox="0 0 12 7"><path fill="%23fff" d="M1 1l5 5 5-5"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 0.6rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.admin-chat-selector:focus {
+    border-color: var(--primary-accent);
+    box-shadow: 0 0 0 3px rgba(168,85,247,0.3);
+    outline: none;
+}
+.admin-chat-selector:hover {
+    border-color: var(--primary-accent);
+}
+
+/* Centraliza o texto "Mensagens" no Chat sempre */
+#chat .screen-header {
+    align-items: center !important;
+}
+#chat .screen-header h3 {
+    width: 100% !important;
+    text-align: center !important;
+}
+
+/* White/Light theme text color for Agendamento and Meus Gastos headers */
+.light-theme #agendamento .screen-header h2,
+.light-theme #gastos .screen-header h2 {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    -webkit-text-fill-color: #000000 !important;
+    color: #000000 !important;
+}
+
+/* Grey color for infinity symbol in Perfil when ADM */
+.adm-infinity-symbol {
+    color: #888888 !important;
+    filter: grayscale(1) opacity(0.65) !important;
+    -webkit-filter: grayscale(1) opacity(0.65) !important;
+}
+
+/* 5. Custom Styling for Cadastre-se link in light theme */
+.light-theme #login .auth-footer a {
+    color: #000000 !important;
+    font-weight: 800;
+}
+
+/* 6. First Login Account Type Modal Styles */
+#first-login-type-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: 2rem;
+    box-sizing: border-box;
+}
+
+#first-login-type-modal.active {
+    display: flex;
+}
+
+#first-login-type-modal .modal-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 28px;
+    padding: 2.5rem 2rem;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.light-theme #first-login-type-modal .modal-card {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.light-theme #first-login-type-modal h3 {
+    color: #000000 !important;
+}
+
+.light-theme #first-login-type-modal p {
+    color: #444444 !important;
+}
+
+.light-theme #first-login-type-modal .options-container button.btn-outline {
+    border-color: rgba(0, 0, 0, 0.2) !important;
+    color: #000000 !important;
+    background: rgba(0, 0, 0, 0.02) !important;
+}
+
+.light-theme #first-login-type-modal .options-container button.btn-outline:hover {
+    background: rgba(0, 0, 0, 0.05) !important;
+}
+
+.light-theme #first-login-type-modal .options-container button.btn-primary {
+    background: #000000 !important;
+    color: #ffffff !important;
+}
+
+/* Eczar font for profile name in Perfil */
+#user-name-display {
+    font-family: 'Eczar', serif !important;
+}
+
+/* Light Theme overrides for payment method buttons in Plans selection overlay */
+.light-theme #plans-selection .method-btn {
+    background: #1e1e24 !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.light-theme #plans-selection .method-btn:hover {
+    background: #2d2d35 !important;
+}
+
+.light-theme #plans-selection .method-btn.selected {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 2px solid #b085f5 !important;
+}
+
+/* Login screen text logo styles */
+.login-logo {
+    font-family: 'Eczar', serif !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+    margin: 0 auto 0.5rem auto !important;
+    line-height: 1.1 !important;
+    color: #ffffff !important; /* White by default in dark theme */
+    font-size: 2.1rem !important; /* Decreased size as requested */
+    border: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5) !important;
+}
+
+.light-theme .login-logo {
+    color: #000000 !important; /* Black in light theme */
+    text-shadow: none !important;
+}
+
+/* Remove card border and background guide from the Login container */
+#login .auth-container {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Eczar font for Login screen greeting elements */
+#login .auth-container h2,
+#login .auth-container p {
+    font-family: 'Eczar', serif !important;
+}
+
+/* Home screen text logo styles */
+.home-logo {
+    font-family: 'Eczar', serif !important;
+    font-size: 2.2rem !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+    margin: 0 auto !important;
+    line-height: 1.1 !important;
+    background: linear-gradient(90deg, #a0a0a0 0%, #ffffff 50%, #2a2a2a 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+.light-theme .home-logo {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    -webkit-text-fill-color: #000000 !important;
+    color: #000000 !important;
+}
+
+/* Configurar Cartão de Visita - Custom Colors & Theme Responses */
+#menu-item-config-cartao .outline-icon {
+    color: #ffffff !important;
+}
+
+.light-theme #menu-item-config-cartao .outline-icon {
+    color: #000000 !important;
+}
+
+/* Full Screen Visitation Card (Professional Profile Home) */
+#professional-home.screen.overlay {
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0px !important;
+    border: none !important;
+}
+
 

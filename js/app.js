@@ -17,9 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
     updateVh();
 
     // --- Initialize Supabase ---
-    // Hardcoding keys and using same-origin proxy for REST while keeping raw WebSocket url for Realtime
-    const proxyUrl = window.location.origin + "/api/supabase";
-    const key = "sb_publishable_WaiQI8T9aLg9iJkV3nEZBg_C5M24-Z5";
+    // Using direct URL to bypass slow Vercel proxy for REST/Realtime completely, with fallback values
+    const supabaseUrlToUse = SUPABASE_URL || "https://oryguljbqcphbtiapvwk.supabase.co";
+    const key = SUPABASE_KEY || "sb_publishable_WaiQI8T9aLg9iJkV3nEZBg_C5M24-Z5";
 
     // Global WebSocket Interceptor: Rewrite proxy WebSocket URL back to native Supabase URL
     if (window.WebSocket) {
@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (window.supabase) {
         try {
-            supabaseClient = window.supabase.createClient(proxyUrl, key, {
+            supabaseClient = window.supabase.createClient(supabaseUrlToUse, key, {
                 auth: {
                     persistSession: true,
                     autoRefreshToken: true,
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             window.supabaseClient = supabaseClient; // Expose globally
-            console.log("Supabase Client initialized natively through same-origin proxy.");
+            console.log("Supabase Client initialized natively through direct Supabase URL.");
             
             // Test connection
             supabaseClient.from('profiles').select('count', { count: 'exact', head: true })
@@ -84,6 +84,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Auth State Listener (Auto-login on confirm) ---
+    function isSupabaseAuthCallback() {
+        const h = window.location.hash || "";
+        return h.startsWith("#access_token=") || h.startsWith("#error=") || h.includes("access_token=") || h.includes("error_description=");
+    }
+
     if (supabaseClient) {
         supabaseClient.auth.onAuthStateChange(async (event, session) => {
             console.log("Auth Event:", event);
@@ -96,9 +101,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 setupNotificationsSubscription();
                 updateNotificationBadges();
 
-                // 1. Redirecionamento Imediato (Se estiver no login/splash)
+                // 1. Redirecionamento Imediato (Se estiver no login/splash ou callback)
                 if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && 
-                    (window.location.hash === '#login' || window.location.hash === '' || window.location.hash === '#splash')) {
+                    (window.location.hash === '#login' || window.location.hash === '' || window.location.hash === '#splash' || isSupabaseAuthCallback())) {
                     console.log("Redirecting to home...");
                     
                     // Inicializa temporariamente com metadata se disponível
@@ -146,6 +151,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Centralized User Detection ---
+    const ADMIN_EMAILS = [
+        'admin@zerosynapses.com',
+        'zerosynapsesoficial@gmail.com',
+        'lara.cabeleireira@teste.com'
+    ];
+
+    function isAdminUser(user) {
+        if (!user) return false;
+        // 1. user_type no localStorage (mais rápido e confiável)
+        if (localStorage.getItem('user_type') === 'admin') return true;
+        // 2. Verifica email do usuário
+        const email = (user.email || '').toLowerCase();
+        if (ADMIN_EMAILS.some(e => email.includes(e))) return true;
+        // 3. Verifica metadata do usuário (nome contém zero/zynapse)
+        const metaName = (user.user_metadata?.full_name || '').toLowerCase();
+        const storedName = (localStorage.getItem('user_name') || '').toLowerCase();
+        if (metaName.includes('zerozynapse') || storedName.includes('zerozynapse')) return true;
+        if (metaName.includes('zero') && metaName.includes('zynapse')) return true;
+        return false;
+    }
+
     async function getCurrentUser() {
         if (!supabaseClient) return null;
         try {
@@ -210,33 +236,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 const userName = localStorage.getItem('user_name') || 'Usuário';
                 let userId = localStorage.getItem('user_id');
                 
-                if (hasEmail !== 'ZeroZynapses' && (!userId || userId === '00000000-0000-0000-0000-000000000000')) {
-                    // Force resolve true user_id from Supabase profiles using email
-                    try {
-                        const queryPromise = supabaseClient
-                            .from('profiles')
-                            .select('id')
-                            .eq('email', hasEmail.trim().toLowerCase())
-                            .maybeSingle();
-                        
-                        const result = await Promise.race([
-                            queryPromise,
-                            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 10000))
-                        ]);
-                        
-                        if (result && result.data && result.data.id) {
-                            userId = result.data.id;
-                            localStorage.setItem('user_id', userId);
-                            console.log("Mock recovery: user_id healed from db to", userId);
+                if (!userId || userId === '00000000-0000-0000-0000-000000000000') {
+                    if (hasEmail === 'ZeroZynapses' || hasEmail === 'lara.cabeleireira@teste.com') {
+                        userId = 'e33bdd17-f6bc-4c72-82cf-c3f76124aca0';
+                        localStorage.setItem('user_id', userId);
+                        console.log("Mock recovery: Admin user_id healed locally to", userId);
+                    } else if (hasEmail) {
+                        // Force resolve true user_id from Supabase profiles using email
+                        try {
+                            const queryPromise = supabaseClient
+                                .from('profiles')
+                                .select('id')
+                                .eq('email', hasEmail.trim().toLowerCase())
+                                .maybeSingle();
+                            
+                            const result = await Promise.race([
+                                queryPromise,
+                                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 10000))
+                            ]);
+                            
+                            if (result && result.data && result.data.id) {
+                                userId = result.data.id;
+                                localStorage.setItem('user_id', userId);
+                                console.log("Mock recovery: user_id healed from db to", userId);
+                            }
+                        } catch (err) {
+                            console.warn("Could not query user_id by email during mock recovery:", err);
                         }
-                    } catch (err) {
-                        console.warn("Could not query user_id by email during mock recovery:", err);
                     }
                 }
 
                 return {
                     id: userId || '00000000-0000-0000-0000-000000000000',
-                    email: hasEmail === 'ZeroZynapses' ? 'lara.cabeleireira@teste.com' : hasEmail,
+                    email: (hasEmail === 'ZeroZynapses' || hasEmail === 'lara.cabeleireira@teste.com') ? 'lara.cabeleireira@teste.com' : hasEmail,
                     user_metadata: {
                         full_name: userName,
                         user_type: userType
@@ -408,7 +440,42 @@ document.addEventListener('DOMContentLoaded', () => {
             .subscribe();
     }
 
+    async function promptForAccountType(user) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('first-login-type-modal');
+            if (!modal) {
+                resolve('client');
+                return;
+            }
+            
+            modal.classList.add('active');
+            
+            const clientBtn = document.getElementById('first-login-btn-client');
+            const profBtn = document.getElementById('first-login-btn-professional');
+            
+            const cleanUp = (type) => {
+                modal.classList.remove('active');
+                resolve(type);
+            };
+            
+            if (clientBtn) {
+                clientBtn.onclick = () => cleanUp('client');
+            }
+            if (profBtn) {
+                profBtn.onclick = () => cleanUp('professional');
+            }
+        });
+    }
+
     async function fetchProfileInBackground(user) {
+        if (!user) return;
+        
+        // Ensure user ID and email are always stored in localStorage to match the authenticated session!
+        localStorage.setItem('user_id', user.id);
+        if (user.email) {
+            localStorage.setItem('user_email', user.email);
+        }
+        
         try {
             const { data: profile, error } = await supabaseClient
                 .from('profiles')
@@ -418,23 +485,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (profile) {
                 console.log("Profile fetched in background:", profile);
-                // Self-healing: If name contains ZeroZynapse OR email is admin, ensure it's admin
-                const isZero = (profile.full_name && profile.full_name.toLowerCase().includes('zerozynapse')) || 
-                               (user.email && (user.email.toLowerCase().includes('admin@zerosynapses.com') || user.email.toLowerCase().includes('lara.cabeleireira@teste.com')));
-                               
+                // Self-healing: se a conta é admin por email/nome mas user_type != 'admin', corrige
+                const isZero = isAdminUser(user) || (profile.full_name && profile.full_name.toLowerCase().includes('zerozynapse'));
+                                
                 if (isZero && profile.user_type !== 'admin') {
                     console.log("Promoting account to admin in Supabase...");
-                    supabaseClient.from('profiles').update({ user_type: 'admin', full_name: 'ZeroZynapses' }).eq('id', user.id).then(() => {
+                    supabaseClient.from('profiles').update({ user_type: 'admin' }).eq('id', user.id).then(() => {
                         localStorage.setItem('user_type', 'admin');
                         updateUserUI();
                     });
                 }
                 localStorage.setItem('user_type', profile.user_type || 'client');
                 localStorage.setItem('user_name', profile.full_name || user.email);
-                localStorage.setItem('user_photo', profile.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || '');
+                let photoUrl = profile.avatar_url || user.user_metadata?.avatar_url || user.user_metadata?.picture || '';
+                if (photoUrl === 'null' || photoUrl === 'undefined') photoUrl = '';
+                localStorage.setItem('user_photo', photoUrl);
                 localStorage.setItem('user_city', profile.city || 'São Paulo, SP');
                 localStorage.setItem('user_address', profile.address || '');
                 localStorage.setItem('user_points', profile.points !== null ? profile.points : 10);
+                localStorage.setItem('user_work_mode', profile.work_mode || 'estabelecimento');
+                localStorage.setItem('user_taxa_deslocamento', (profile.taxa_deslocamento !== null && profile.taxa_deslocamento !== undefined) ? profile.taxa_deslocamento.toString() : '0');
                 
                 updateUserUI();
                 
@@ -446,22 +516,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderChatList();
                 }
             } else if (user) {
-                console.log("Profile missing, creating for user:", user.id);
-                const isZero = user.email.toLowerCase().includes('admin@zerosynapses.com') || user.email.toLowerCase().includes('lara.cabeleireira@teste.com') || 
-                               (user.user_metadata.full_name && user.user_metadata.full_name.toLowerCase().includes('zerozynapse'));
+                console.log("Profile missing, asking for account type...");
+                const isZero = isAdminUser(user);
+                let chosenType = 'client';
+                if (isZero) {
+                    chosenType = 'admin';
+                } else {
+                    chosenType = await promptForAccountType(user);
+                }
                 const newProfile = {
                     id: user.id,
-                    full_name: isZero ? 'ZeroZynapses' : (user.user_metadata.full_name || user.email),
-                    user_type: isZero ? 'admin' : (user.user_metadata.user_type || 'client'),
+                    full_name: isZero ? 'ZeroZynapses' : (user.user_metadata?.full_name || user.email || (chosenType === 'professional' ? 'Profissional' : 'Cliente')),
+                    email: user.email || null,
+                    user_type: chosenType,
                     avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
                     points: 10
                 };
-                supabaseClient.from('profiles').insert([newProfile]).then(() => {
-                    localStorage.setItem('user_type', newProfile.user_type);
-                    localStorage.setItem('user_name', newProfile.full_name);
-                    updateUserUI();
-                    syncDatabaseProfiles();
-                });
+                
+                const { error: insertError } = await supabaseClient.from('profiles').insert([newProfile]);
+                if (insertError) throw insertError;
+                
+                localStorage.setItem('user_type', newProfile.user_type);
+                localStorage.setItem('user_name', newProfile.full_name);
+                localStorage.setItem('user_photo', newProfile.avatar_url);
+                localStorage.setItem('user_points', '10');
+                
+                updateUserUI();
+                syncDatabaseProfiles();
+                window.location.hash = '#home';
             }
         } catch (err) {
             console.warn("Could not fetch profile in background:", err.message);
@@ -498,6 +580,39 @@ document.addEventListener('DOMContentLoaded', () => {
             if (searchResults) searchResults.style.display = 'none';
             if (convsList) convsList.style.display = 'block';
             if (searchInput) searchInput.value = '';
+
+            // Instantly clear message notification badges in the DOM when entering Chat screen!
+            const menuChatBadge = document.getElementById('menu-chat-badge');
+            if (menuChatBadge) menuChatBadge.style.display = 'none';
+            const profileNotifBadge = document.getElementById('profile-notif-badge');
+            const menuNotifBadge = document.getElementById('menu-notif-badge');
+            const notifVal = menuNotifBadge && menuNotifBadge.style.display !== 'none' ? parseInt(menuNotifBadge.innerText) || 0 : 0;
+            if (notifVal === 0 && profileNotifBadge) {
+                profileNotifBadge.style.display = 'none';
+            }
+
+            // Mark all message notifications as read in database
+            getCurrentUser().then(user => {
+                if (user && supabaseClient) {
+                    const isAdmin = isAdminUser(user);
+                    getAdminIds().then(adminIdsSet => {
+                        const adminIds = Array.from(adminIdsSet);
+                        let query = supabaseClient.from('notifications')
+                            .update({ is_read: true })
+                            .eq('type', 'message')
+                            .eq('is_read', false);
+                        if (isAdmin && adminIds.length > 0) {
+                            query = query.in('user_id', adminIds);
+                        } else {
+                            query = query.eq('user_id', user.id);
+                        }
+                        query.then(() => {
+                            updateNotificationBadges();
+                        });
+                    });
+                }
+            });
+
             renderChatList();
         },
         '#perfil': () => {
@@ -546,8 +661,69 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    function showThemeSelectionOverlay() {
+        const modal = document.getElementById('theme-selection-overlay');
+        if (!modal) return;
+        
+        modal.classList.add('active');
+        
+        const btnLight = document.getElementById('theme-btn-light');
+        const btnDark = document.getElementById('theme-btn-dark');
+        const userId = localStorage.getItem('user_id');
+        
+        if (btnLight) {
+            btnLight.onclick = () => {
+                const root = document.documentElement;
+                root.classList.add('light-theme');
+                localStorage.setItem('theme', 'light');
+                if (userId) {
+                    localStorage.setItem('theme_choice_made_' + userId, 'true');
+                }
+                modal.classList.remove('active');
+                window.location.hash = '#home';
+                handleRoute();
+            };
+        }
+        
+        if (btnDark) {
+            btnDark.onclick = () => {
+                const root = document.documentElement;
+                root.classList.remove('light-theme');
+                localStorage.setItem('theme', 'dark');
+                if (userId) {
+                    localStorage.setItem('theme_choice_made_' + userId, 'true');
+                }
+                modal.classList.remove('active');
+                window.location.hash = '#home';
+                handleRoute();
+            };
+        }
+    }
+
     function handleRoute() {
         const hash = window.location.hash || '#splash';
+
+        const userId = localStorage.getItem('user_id');
+        const authHashes = ['#login', '#register', '#register-prof', '#user-type-selection', '#splash', '#welcome', '#register-client'];
+        if (userId && !authHashes.includes(hash) && !localStorage.getItem('theme_choice_made_' + userId)) {
+            showThemeSelectionOverlay();
+            return;
+        }
+
+        if (hash.startsWith('#agendar/')) {
+            const parts = hash.split('/');
+            const profId = parts[1];
+            const serviceId = parts[2] || null;
+            
+            localStorage.setItem('selected_prof_id', profId);
+            if (serviceId) {
+                localStorage.setItem('selected_service_id', serviceId);
+            }
+            hideOverlay('professional-detail');
+            hideOverlay('professional-home');
+            window.location.hash = '#agendamento';
+            return;
+        }
         
         if (hash.startsWith('#profissional/')) {
             const id = hash.split('/')[1];
@@ -582,6 +758,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('hashchange', handleRoute);
+    setupConfigVisitaListener();
+
+    // Intercept clicks on menu items or buttons that navigate to '#chat' to clear notifications instantly!
+    document.addEventListener('click', (e) => {
+        const element = e.target.closest('[onclick*="#chat"]');
+        if (element) {
+            console.log("⚡ Click on Chat/Mensagens detected, instantly clearing notification badges!");
+            
+            // Instantly clear badges in the DOM
+            const menuChatBadge = document.getElementById('menu-chat-badge');
+            if (menuChatBadge) menuChatBadge.style.display = 'none';
+            
+            const profileNotifBadge = document.getElementById('profile-notif-badge');
+            const menuNotifBadge = document.getElementById('menu-notif-badge');
+            const notifVal = menuNotifBadge && menuNotifBadge.style.display !== 'none' ? parseInt(menuNotifBadge.innerText) || 0 : 0;
+            if (notifVal === 0 && profileNotifBadge) {
+                profileNotifBadge.style.display = 'none';
+            }
+            
+            // Mark all message notifications as read in database
+            getCurrentUser().then(user => {
+                if (user && supabaseClient) {
+                    const isAdmin = isAdminUser(user);
+                    getAdminIds().then(adminIdsSet => {
+                        const adminIds = Array.from(adminIdsSet);
+                        let query = supabaseClient.from('notifications')
+                            .update({ is_read: true })
+                            .eq('type', 'message')
+                            .eq('is_read', false);
+                        if (isAdmin && adminIds.length > 0) {
+                            query = query.in('user_id', adminIds);
+                        } else {
+                            query = query.eq('user_id', user.id);
+                        }
+                        query.then(() => {
+                            updateNotificationBadges();
+                        });
+                    });
+                }
+            });
+        }
+    });
 
     // --- Screen Logic ---
     function showScreen(id) {
@@ -637,6 +855,15 @@ document.addEventListener('DOMContentLoaded', () => {
             else if ((hash === '#chat' || hash.startsWith('#chat-msg') || hash === '#notificacoes') && href === '#perfil') tab.classList.add('active');
             else tab.classList.remove('active');
         });
+
+        // Trigger onboarding tour if logged in and not completed
+        if (localStorage.getItem('user_id') && !localStorage.getItem('onboarding_tour_completed')) {
+            setTimeout(() => {
+                if (typeof window.startOnboardingTour === 'function') {
+                    window.startOnboardingTour();
+                }
+            }, 800);
+        }
     }
 
     window.showOverlay = function(id) {
@@ -684,10 +911,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
 
         if (type === 'admin') {
-            if (titleEl) titleEl.innerText = "Doar Pontos";
-            if (msgEl) msgEl.innerText = "Selecione um usuário para adicionar pontos bônus à conta.";
+            if (titleEl) titleEl.innerText = "Gerenciar Usuários";
+            if (msgEl) msgEl.innerText = "Doe pontos ou ajuste a pontuação de estrelas de qualquer usuário.";
             if (methodsSection) methodsSection.style.display = 'none';
-            renderAdminGiftPoints();
+            renderAdminGiftPoints('points');
             return;
         }
 
@@ -739,38 +966,81 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
     };
 
-    window.renderAdminGiftPoints = async function() {
+    window.renderAdminGiftPoints = async function(activeTab = 'points') {
         const container = document.getElementById('plans-container');
         container.innerHTML = '<div class="loader-mini" style="margin: 2rem auto;"></div>';
 
         try {
             const { data: profiles, error } = await supabaseClient
                 .from('profiles')
-                .select('*')
+                .select('id, full_name, user_type, points, rating, avatar_url')
+                .neq('user_type', 'admin')
                 .order('full_name', { ascending: true })
-                .limit(30);
+                .limit(50);
 
             if (error) throw error;
 
-            container.innerHTML = profiles.map(p => `
-                <div class="plan-card" style="text-align: left; padding: 1.25rem; gap: 15px; cursor: default; border-color: rgba(255,255,255,0.05);">
-                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 1rem;">
-                        <div style="width: 45px; height: 45px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; overflow: hidden; border: 1px solid #333;">
-                            ${p.avatar_url ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` : '👤'}
-                        </div>
-                        <div style="flex: 1;">
-                            <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${p.full_name || 'Usuário'}</div>
-                            <div style="font-size: 0.7rem; color: #666; font-weight: 600; text-transform: uppercase;">
-                                ${p.user_type === 'professional' ? '💼 Pro' : '👤 Cliente'} • <span style="color: var(--primary-accent);">${p.points || 0} pts</span>
+            const tabBtnStyle = (active) => `flex:1; padding:10px; border-radius:10px; font-weight:800; font-size:0.78rem; border:none; cursor:pointer; transition:all 0.2s; background:${active ? '#a855f7' : 'transparent'}; color:${active ? '#fff' : '#888'};`;
+
+            const isPoints = activeTab === 'points';
+
+            const tabsHtml = `
+                <div style="display:flex;gap:8px;background:#000;padding:5px;border-radius:12px;border:1px solid #222;margin-bottom:1.25rem;">
+                    <button id="adm-tab-points" style="${tabBtnStyle(isPoints)}" onclick="renderAdminGiftPoints('points')">🎁 Pontos</button>
+                    <button id="adm-tab-stars" style="${tabBtnStyle(!isPoints)}" onclick="renderAdminGiftPoints('stars')">⭐ Estrelas</button>
+                </div>
+            `;
+
+            if (isPoints) {
+                container.innerHTML = tabsHtml + profiles.map(p => {
+                    const pts = Number(p.points) || 0;
+                    const typeLabel = p.user_type === 'professional' ? '💼 Pro' : '👤 Cliente';
+                    return `
+                    <div class="plan-card" style="text-align:left;padding:1.25rem;cursor:default;border-color:rgba(255,255,255,0.05);">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;">
+                            <div style="width:42px;height:42px;background:#222;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;overflow:hidden;border:1px solid #333;">
+                                ${p.avatar_url ? `<img src="${p.avatar_url}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;">` : '👤'}
+                            </div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:800;color:#fff;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.full_name || 'Usuário'}</div>
+                                <div style="font-size:0.7rem;color:#666;font-weight:600;margin-top:2px;">${typeLabel} · <span style="color:#a855f7;">${pts} pts</span></div>
                             </div>
                         </div>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <input type="number" id="pts-input-${p.id}" placeholder="Quantidade" style="flex: 1; background: #000; border: 1px solid #333; color: #fff; padding: 10px; border-radius: 12px; font-weight: 800; font-size: 0.85rem;">
-                        <button class="btn btn-sm" onclick="giftPoints('${p.id}', '${p.full_name || 'Usuário'}')" style="background: var(--primary-accent); padding: 0 15px; border-radius: 12px; font-weight: 900; font-size: 0.75rem;">DOAR</button>
-                    </div>
-                </div>
-            `).join('');
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input type="number" id="pts-input-${p.id}" placeholder="+ ou - pontos (ex: 50 ou -20)" style="flex:1;background:#000;border:1px solid #333;color:#fff;padding:10px;border-radius:12px;font-weight:700;font-size:0.82rem;">
+                            <button onclick="giftPoints('${p.id}','${(p.full_name||'Usuário').replace(/'/g,'\\&apos;')}')" style="background:#a855f7;border:none;color:#fff;border-radius:12px;padding:10px 16px;font-weight:900;font-size:0.78rem;cursor:pointer;flex-shrink:0;">APLICAR</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } else {
+                container.innerHTML = tabsHtml + profiles.map(p => {
+                    const rating = Number(p.rating) || 4.7;
+                    const typeLabel = p.user_type === 'professional' ? '💼 Pro' : '👤 Cliente';
+                    const ratingColor = rating >= 4.5 ? '#10B981' : rating >= 4.0 ? '#F59E0B' : '#EF4444';
+                    return `
+                    <div class="plan-card" style="text-align:left;padding:1.25rem;cursor:default;border-color:rgba(255,255,255,0.05);">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;">
+                            <div style="width:42px;height:42px;background:#222;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;overflow:hidden;border:1px solid #333;">
+                                ${p.avatar_url ? `<img src="${p.avatar_url}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;">` : '👤'}
+                            </div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:800;color:#fff;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.full_name || 'Usuário'}</div>
+                                <div style="font-size:0.7rem;color:#666;font-weight:600;margin-top:2px;">${typeLabel} · <span style="color:${ratingColor};font-weight:800;">★ ${rating.toFixed(1)}</span></div>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input type="number" id="star-input-${p.id}" placeholder="ex: 0.2 ou -0.3" step="0.1" min="-5" max="5" style="flex:1;background:#000;border:1px solid #333;color:#fff;padding:10px;border-radius:12px;font-weight:700;font-size:0.82rem;">
+                            <button onclick="adjustStarRating('${p.id}','${(p.full_name||'Usuário').replace(/'/g,'\\&apos;')}', ${rating})" style="background:#F59E0B;border:none;color:#000;border-radius:12px;padding:10px 16px;font-weight:900;font-size:0.78rem;cursor:pointer;flex-shrink:0;">AJUSTAR</button>
+                        </div>
+                        <div style="display:flex;gap:6px;margin-top:8px;">
+                            <button onclick="document.getElementById('star-input-${p.id}').value='0.1'" style="flex:1;background:#0a2a0a;border:1px solid #10B981;color:#10B981;border-radius:8px;padding:6px;font-size:0.7rem;font-weight:800;cursor:pointer;">+0.1</button>
+                            <button onclick="document.getElementById('star-input-${p.id}').value='0.5'" style="flex:1;background:#0a2a0a;border:1px solid #10B981;color:#10B981;border-radius:8px;padding:6px;font-size:0.7rem;font-weight:800;cursor:pointer;">+0.5</button>
+                            <button onclick="document.getElementById('star-input-${p.id}').value='-0.1'" style="flex:1;background:#2a0a0a;border:1px solid #EF4444;color:#EF4444;border-radius:8px;padding:6px;font-size:0.7rem;font-weight:800;cursor:pointer;">-0.1</button>
+                            <button onclick="document.getElementById('star-input-${p.id}').value='-0.5'" style="flex:1;background:#2a0a0a;border:1px solid #EF4444;color:#EF4444;border-radius:8px;padding:6px;font-size:0.7rem;font-weight:800;cursor:pointer;">-0.5</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
 
         } catch (err) {
             console.error("Erro ao carregar usuários:", err);
@@ -782,39 +1052,73 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.getElementById(`pts-input-${userId}`);
         const amount = parseInt(input ? input.value : 0);
 
-        if (!amount || amount <= 0) return alert("Informe uma quantidade válida de pontos.");
+        if (!amount || amount === 0) return alert('Informe uma quantidade de pontos (positiva para adicionar, negativa para remover).');
 
         try {
-            // Get current points first
-            const { data: profile } = await supabaseClient.from('profiles').select('points').eq('id', userId).single();
-            const currentPoints = profile ? (profile.points || 0) : 0;
+            const { data: profile } = await supabaseClient.from('profiles').select('points').eq('id', userId).maybeSingle();
+            const currentPoints = Number(profile?.points) || 0;
+            const newPoints = Math.max(0, currentPoints + amount);
 
-            const { error } = await supabaseClient
-                .from('profiles')
-                .update({ points: currentPoints + amount })
-                .eq('id', userId);
-
+            const { error } = await supabaseClient.from('profiles').update({ points: newPoints }).eq('id', userId);
             if (error) throw error;
 
-            // Insere notificação para o destinatário dos pontos
             const adminUser = await getCurrentUser();
-            const adminId = adminUser ? adminUser.id : null;
+            const adminId = adminUser?.id || localStorage.getItem('user_id');
 
+            const action = amount > 0 ? `recebeu ${amount} pontos bônus` : `teve ${Math.abs(amount)} pontos removidos`;
             await supabaseClient.from('notifications').insert([{
                 user_id: userId,
                 sender_id: adminId,
                 type: 'points_gifted',
-                title: 'Pontos Recebidos! 🎁',
-                content: `Você recebeu ${amount} pontos bônus do administrador.`,
+                title: amount > 0 ? '🎁 Pontos Recebidos!' : '⚠️ Pontos Removidos',
+                content: `Você ${action} pelo administrador. Saldo atual: ${newPoints} pts.`,
                 link: '#perfil'
             }]);
 
-            showSuccessModal('Doação Realizada!', `${amount} pontos foram creditados na conta de ${name}.`);
-            renderAdminGiftPoints(); // Refresh list to show new points
-
+            showSuccessModal(
+                amount > 0 ? 'Pontos Doados!' : 'Pontos Removidos!',
+                `${Math.abs(amount)} pontos foram ${amount > 0 ? 'creditados a' : 'removidos de'} ${name}. Novo saldo: ${newPoints} pts.`
+            );
+            renderAdminGiftPoints('points');
         } catch (err) {
-            console.error("Erro ao doar pontos:", err);
-            alert("Não foi possível processar a doação no momento.");
+            console.error('Erro ao ajustar pontos:', err);
+            alert('Não foi possível processar a operação: ' + (err.message || err));
+        }
+    };
+
+    window.adjustStarRating = async function(userId, name, currentRating) {
+        const input = document.getElementById(`star-input-${userId}`);
+        const delta = parseFloat(input ? input.value : 0);
+
+        if (!delta || delta === 0 || isNaN(delta)) return alert('Informe o ajuste de estrelas (ex: 0.2 para subir, -0.3 para baixar).');
+
+        const newRating = Math.min(5.0, Math.max(1.0, Math.round((Number(currentRating) + delta) * 10) / 10));
+
+        try {
+            const { error } = await supabaseClient.from('profiles').update({ rating: newRating }).eq('id', userId);
+            if (error) throw error;
+
+            const adminUser = await getCurrentUser();
+            const adminId = adminUser?.id || localStorage.getItem('user_id');
+            const direction = delta > 0 ? 'aumentada' : 'reduzida';
+
+            await supabaseClient.from('notifications').insert([{
+                user_id: userId,
+                sender_id: adminId,
+                type: 'alert',
+                title: `⭐ Pontuação ${direction}`,
+                content: `Sua pontuação foi ${direction} pelo administrador. Nova nota: ★ ${newRating.toFixed(1)}.`,
+                link: '#perfil'
+            }]);
+
+            showSuccessModal(
+                'Pontuação Ajustada!',
+                `${name} agora tem ★ ${newRating.toFixed(1)} (era ${Number(currentRating).toFixed(1)}).`
+            );
+            renderAdminGiftPoints('stars');
+        } catch (err) {
+            console.error('Erro ao ajustar estrelas:', err);
+            alert('Não foi possível processar o ajuste: ' + (err.message || err));
         }
     };
 
@@ -914,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.activePaymentPolling = pollInterval;
     };
 
-    window.finalizePaymentSuccess = function(planObj) {
+    window.finalizePaymentSuccess = async function(planObj) {
         const procOverlay = document.getElementById('payment-processing');
         const statusTitle = document.getElementById('payment-status-title');
         const statusMsg = document.getElementById('payment-status-msg');
@@ -923,28 +1227,57 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!statusIcon || !statusTitle) return;
 
-        // Visual Success Feedback (Gateway Confirmed)
-        console.log("[Payment Gateway] Webhook Received: PAYMENT_CONFIRMED");
-        
         statusIcon.className = "";
-        statusIcon.innerHTML = `<div style="width: 80px; height: 80px; background: #10B981; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #fff; margin-bottom: 2rem; animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">✓</div>`;
-        statusTitle.innerText = "Pagamento Confirmado!";
-        statusMsg.innerText = "Recebemos a confirmação do seu banco. Sua assinatura foi ativada com sucesso!";
+        statusIcon.innerHTML = `<div style="width: 80px; height: 80px; background: #FCD34D; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #000; margin-bottom: 2rem; animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">⏳</div>`;
+        statusTitle.innerText = "Aprovação Pendente!";
+        
+        const wppNum = "5511960884884";
+        const msgText = encodeURIComponent(`Olá, solicitei a assinatura do ${planObj ? planObj.name : 'Plano'} e gostaria de enviar meu comprovante.`);
+        
+        statusMsg.innerHTML = `
+            A liberação do seu plano requer o envio do comprovante (com CPF).
+            <br><br>
+            <a href="https://wa.me/${wppNum}?text=${msgText}" target="_blank" style="display:inline-block; background:#25D366; color:#fff; font-weight:800; padding:12px 24px; border-radius:30px; text-decoration:none; margin-top:10px;">
+                📱 Enviar Comprovante no WhatsApp
+            </a>
+            <br><br>
+            Seu plano será ativado após aprovação do ADM.
+        `;
         qrContainer.style.display = "none";
 
-        // Persistent update in database/storage
+        const userId = localStorage.getItem('user_id');
+        const userName = localStorage.getItem('user_name') || 'Usuário';
+
         if (planObj) {
-            localStorage.setItem('user_subscription_plan', planObj.name);
-            // In real app: await supabaseClient.from('profiles').update({ subscription_tier: planObj.id })...
+            localStorage.setItem('user_subscription_status', 'pending');
+            localStorage.setItem('user_requested_plan', planObj.name);
+
+            if (supabaseClient && userId && !userId.startsWith('prof-') && !userId.startsWith('mock-')) {
+                try {
+                    await supabaseClient.from('profiles').update({ 
+                        subscription_status: 'pending',
+                        requested_plan: planObj.name
+                    }).eq('id', userId);
+
+                    await supabaseClient.from('notifications').insert([{
+                        user_id: 'admin', // Envia notificação para o(s) admin(s)
+                        title: 'Nova Solicitação de Assinatura',
+                        message: `${userName} solicitou o ${planObj.name}. Aguardando comprovante.`,
+                        type: 'system'
+                    }]);
+                } catch(e) {
+                    console.error("Error saving pending plan:", e);
+                }
+            }
         }
 
         setTimeout(() => {
             if (procOverlay) procOverlay.classList.remove('active');
             hideOverlay('plans-selection');
             updateUserUI();
-            showSuccessModal('Upgrade Concluído!', `Obrigado! Você agora é ${planObj ? planObj.name : 'Premium'}!`);
+            showSuccessModal('Solicitação Recebida', `Por favor, envie o comprovante no WhatsApp para ativarmos seu ${planObj ? planObj.name : 'Plano'}.`);
             statusIcon.innerHTML = ""; 
-        }, 3000);
+        }, 12000);
     };
 
     // --- Initial Flow ---
@@ -1188,6 +1521,181 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    window.supabaseGoogleLogin = async function() {
+        console.log("🚀 Starting real Google Sign-In via Google Identity Services...");
+        
+        // Ensure Google GIS library is loaded
+        if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+            console.log("Loading Google Identity Services dynamically...");
+            const script = document.createElement('script');
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            script.onload = () => {
+                triggerRealGoogleLogin();
+            };
+            document.head.appendChild(script);
+        } else {
+            triggerRealGoogleLogin();
+        }
+    };
+
+    function triggerRealGoogleLogin() {
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "348192418109-gbg9quomppt6upi5bplu7t7nohnah5ue.apps.googleusercontent.com";
+        console.log("Initializing Google OAuth2 Token Client with Client ID:", clientId);
+        
+        try {
+            const client = google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email openid',
+                callback: async (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        console.log("✅ Google Access Token received successfully.");
+                        await handleGoogleLoginSuccess(tokenResponse.access_token);
+                    } else {
+                        console.error("Google Auth failed or was cancelled.", tokenResponse);
+                        alert("Não foi possível autenticar com a conta do Google.");
+                    }
+                },
+                error_callback: (err) => {
+                    console.error("Google Auth Error:", err);
+                    alert("Erro ao autenticar com o Google: " + (err.message || "Erro desconhecido"));
+                }
+            });
+            
+            client.requestAccessToken();
+        } catch (err) {
+            console.error("Failed to initialize Google Token Client:", err);
+            alert("Erro ao iniciar o login do Google: " + err.message);
+        }
+    }
+    
+    async function handleGoogleLoginSuccess(accessToken) {
+        try {
+            if (typeof showLuxuryNotificationToast === 'function') {
+                showLuxuryNotificationToast('Google Login', 'Sincronizando conta com o servidor...');
+            }
+            
+            // Fetch profile data from Google
+            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`
+                }
+            });
+            
+            if (!res.ok) {
+                throw new Error("Falha ao carregar perfil do Google.");
+            }
+            
+            const googleUser = await res.json();
+            console.log("✅ Loaded Google Profile:", googleUser);
+            
+            const email = googleUser.email;
+            const name = googleUser.name || googleUser.given_name || 'Usuário Google';
+            const photo = googleUser.picture || '';
+            const googleSubId = googleUser.sub;
+            
+            // Base local storage keys for active session
+            localStorage.setItem('user_name', name);
+            localStorage.setItem('user_email', email);
+            localStorage.setItem('user_photo', photo);
+            
+            // Default attributes
+            let userId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); });
+            let userType = 'client';
+            let plan = 'Free';
+            let points = 0;
+            
+            // Sync with Supabase profiles table
+            if (supabaseClient) {
+                try {
+                    console.log("Searching database for existing profile with email:", email);
+                    const { data: profile, error } = await supabaseClient
+                        .from('profiles')
+                        .select('*')
+                        .eq('email', email)
+                        .maybeSingle();
+                        
+                    if (error) {
+                        console.error("Error looking up profile:", error);
+                    }
+                    
+                    if (profile) {
+                        console.log("✅ Profile match found in Supabase:", profile);
+                        userId = profile.id;
+                        userType = profile.user_type || 'client';
+                        plan = profile.subscription_plan || 'Free';
+                        points = profile.points || 0;
+                        
+                        // Keep avatar/name updated
+                        await supabaseClient
+                            .from('profiles')
+                            .update({
+                                avatar_url: photo || profile.avatar_url,
+                                full_name: name
+                            })
+                            .eq('id', userId);
+                    } else {
+                        console.log("Google Login: Profile missing in database. Prompting for account type...");
+                        // Prompt user to select whether they are Client or Professional BEFORE logging in!
+                        userType = await promptForAccountType({ email });
+                        console.log("User selected account type:", userType);
+                        
+                        const newProfile = {
+                            id: userId,
+                            full_name: name,
+                            email: email,
+                            user_type: userType,
+                            avatar_url: photo,
+                            points: 10
+                        };
+                        
+                        const { error: insertError } = await supabaseClient
+                            .from('profiles')
+                            .insert([newProfile]);
+                            
+                        if (insertError) {
+                            console.error("Error creating Google profile:", insertError);
+                        } else {
+                            console.log("✅ Successfully created Google profile in database!");
+                        }
+                        points = 10;
+                    }
+                } catch (dbErr) {
+                    console.error("Database sync exception:", dbErr);
+                }
+            }
+            
+            // Save attributes
+            localStorage.setItem('user_type', userType);
+            localStorage.setItem('user_id', userId);
+            localStorage.setItem('user_subscription_plan', plan);
+            localStorage.setItem('user_points', points);
+            
+            // Update UI
+            updateUserUI();
+            
+            // Hide login errors if visible
+            const errorEl = document.getElementById('login-error-msg');
+            if (errorEl) errorEl.style.display = 'none';
+            
+            // Success Toast
+            if (typeof showLuxuryNotificationToast === 'function') {
+                showLuxuryNotificationToast(
+                    'Entrar com o Google',
+                    `Bem-vindo, ${name}! Login realizado com sucesso.`
+                );
+            }
+            
+            // Redirect
+            window.location.hash = '#home';
+            
+        } catch (err) {
+            console.error("🔥 Google sign-in post-auth error:", err);
+            alert("Erro ao processar login do Google: " + err.message);
+        }
+    };
+
     // --- Dynamic Resilient Google Login setup ---
     function setupGoogleLogin() {
         const container = document.getElementById('google-login-container');
@@ -1228,51 +1736,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const btn = document.getElementById('btn-mock-google-login');
             if (btn) {
-                btn.onclick = (e) => {
+                btn.onclick = async (e) => {
                     e.preventDefault();
                     console.log("🔑 Google sign-in local mock redirect...");
-                    localStorage.setItem('user_type', 'client');
-                    localStorage.setItem('user_name', 'Anderson');
-                    localStorage.setItem('user_email', 'anderson@gmail.com');
-                    localStorage.setItem('user_photo', '');
+                    
+                    const mockEmail = 'anderson.google@gmail.com';
+                    const chosenType = await promptForAccountType({ email: mockEmail });
+                    
+                    localStorage.setItem('user_type', chosenType);
+                    localStorage.setItem('user_name', 'Anderson (Google)');
+                    localStorage.setItem('user_email', mockEmail);
+                    localStorage.setItem('user_photo', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80');
+                    let mockId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); });
+                    localStorage.setItem('user_id', mockId);
+                    
                     updateUserUI();
+                    
+                    if (typeof showLuxuryNotificationToast === 'function') {
+                        showLuxuryNotificationToast(
+                            'Entrar com o Google',
+                            'Simulação ativada com sucesso! Login concedido via Google offline.'
+                        );
+                    }
+                    
                     window.location.hash = '#home';
                 };
             }
         } else {
-            // Render real Google OAuth button programmatically to ensure dynamic parsing works flawlessly
-            if (window.google && window.google.accounts) {
-                try {
-                    window.google.accounts.id.initialize({
-                        client_id: "348192418109-gbg9quomppt6upi5bplu7t7nohnah5ue.apps.googleusercontent.com",
-                        callback: window.handleCredentialResponse,
-                        context: "signin",
-                        ux_mode: "popup",
-                        auto_prompt: false
-                    });
-                    
-                    container.innerHTML = '<div id="google-signin-btn-anchor" style="display: flex; justify-content: center; width: 100%;"></div>';
-                    
-                    window.google.accounts.id.renderButton(
-                        document.getElementById('google-signin-btn-anchor'),
-                        {
-                            type: "standard",
-                            shape: "rectangular",
-                            theme: "filled_black",
-                            text: "signin_with",
-                            size: "large",
-                            logo_alignment: "left",
-                            width: 240
-                        }
-                    );
-                    console.log("✅ Google Sign-In programmatically initialized and rendered.");
-                } catch (err) {
-                    console.error("❌ Error programmatically rendering Google Sign-In button:", err);
-                }
-            } else {
-                console.log("⏳ Google Client SDK not loaded yet. Retrying in 200ms...");
-                setTimeout(setupGoogleLogin, 200);
-            }
+            // Render real Google OAuth button using Supabase OAuth Redirect (immune to COOP/popup postMessage failures)
+            container.innerHTML = `
+                <button onclick="window.supabaseGoogleLogin()" style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    background: #fff;
+                    color: #000;
+                    border: 1px solid #ddd;
+                    border-radius: 12px;
+                    padding: 12px 24px;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    width: 100%;
+                    max-width: 240px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    margin: 0 auto;
+                " onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">
+                    <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                    </svg>
+                    <span>Entrar com o Google</span>
+                </button>
+            `;
         }
     }
 
@@ -1521,6 +2041,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
 
+                    const workModeInput = document.querySelector('input[name="prof-work-mode"]:checked');
+                    const workMode = workModeInput ? workModeInput.value : 'estabelecimento';
+                    const visitationFeeInput = document.getElementById('prof-visitation-fee');
+                    const taxaDeslocamento = (workMode === 'domicilio' || workMode === 'ambos') && visitationFeeInput && visitationFeeInput.value
+                        ? parseFloat(visitationFeeInput.value)
+                        : 0;
+
                     await supabaseClient.from('profiles').upsert({
                         id: data.user.id,
                         full_name: displayName,
@@ -1530,7 +2057,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         city,
                         phone: formattedPhone,
                         avatar_url: finalAvatarUrl,
-                        points: 0
+                        points: 0,
+                        work_mode: workMode,
+                        taxa_deslocamento: taxaDeslocamento
                     });
                 }
 
@@ -1541,6 +2070,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('user_phone', formattedPhone);
                 localStorage.setItem('user_photo', finalAvatarUrl);
                 localStorage.setItem('user_points', '0');
+                localStorage.setItem('user_work_mode', workMode);
+                localStorage.setItem('user_taxa_deslocamento', taxaDeslocamento.toString());
                 if (data.user) {
                     localStorage.setItem('user_id', data.user.id);
                 }
@@ -1841,6 +2372,26 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('edit-user-working-end').value = localStorage.getItem('user_working_end') || '18:00';
             document.getElementById('edit-user-price-range').value = localStorage.getItem('user_price_range') || '';
             document.getElementById('edit-user-pix').value = localStorage.getItem('user_pix_key') || '';
+
+            // Work Mode prefill
+            const savedWorkMode = localStorage.getItem('user_work_mode') || '';
+            if (savedWorkMode) {
+                const radio = document.querySelector(`input[name="edit-work-mode"][value="${savedWorkMode}"]`);
+                if (radio) radio.checked = true;
+            }
+            const taxaGroup = document.getElementById('edit-taxa-deslocamento-group');
+            if (savedWorkMode === 'domicilio' || savedWorkMode === 'ambos') {
+                if (taxaGroup) taxaGroup.style.display = 'block';
+            }
+            document.getElementById('edit-user-taxa-deslocamento').value = localStorage.getItem('user_taxa_deslocamento') || '';
+
+            // Toggle taxa visibility on radio change
+            document.querySelectorAll('input[name="edit-work-mode"]').forEach(r => {
+                r.addEventListener('change', function() {
+                    const tg = document.getElementById('edit-taxa-deslocamento-group');
+                    if (tg) tg.style.display = (this.value === 'domicilio' || this.value === 'ambos') ? 'block' : 'none';
+                });
+            });
         } else {
             if (clientFields) clientFields.style.display = 'flex';
             if (profFields) profFields.style.display = 'none';
@@ -1896,6 +2447,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         document.getElementById('edit-user-working-end').value = end;
                         document.getElementById('edit-user-price-range').value = dbProfile.price_range || '';
                         document.getElementById('edit-user-pix').value = dbProfile.pix_key || '';
+
+                        // Work Mode from DB
+                        if (dbProfile.work_mode) {
+                            const radio = document.querySelector(`input[name="edit-work-mode"][value="${dbProfile.work_mode}"]`);
+                            if (radio) radio.checked = true;
+                            const tg = document.getElementById('edit-taxa-deslocamento-group');
+                            if (tg) tg.style.display = (dbProfile.work_mode === 'domicilio' || dbProfile.work_mode === 'ambos') ? 'block' : 'none';
+                        }
+                        if (dbProfile.taxa_deslocamento !== null && dbProfile.taxa_deslocamento !== undefined) {
+                            document.getElementById('edit-user-taxa-deslocamento').value = dbProfile.taxa_deslocamento;
+                        }
                     } else {
                         document.getElementById('edit-user-birth').value = dbProfile.birth_date || '';
                         document.getElementById('edit-user-bio').value = dbProfile.bio || '';
@@ -1967,6 +2529,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 updatePayload.working_hours = `${workingStart} - ${workingEnd}`;
                 updatePayload.price_range = priceRange ? parseFloat(priceRange) : null;
                 updatePayload.pix_key = pix;
+
+                const workModeRadio = document.querySelector('input[name="edit-work-mode"]:checked');
+                updatePayload.work_mode = workModeRadio ? workModeRadio.value : null;
+                const taxaVal = document.getElementById('edit-user-taxa-deslocamento').value;
+                updatePayload.taxa_deslocamento = taxaVal ? parseFloat(taxaVal) : null;
             } else {
                 const birth = document.getElementById('edit-user-birth').value;
                 const bio = document.getElementById('edit-user-bio').value;
@@ -1999,6 +2566,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem('user_working_end', document.getElementById('edit-user-working-end').value || '');
                     localStorage.setItem('user_price_range', updatePayload.price_range || '');
                     localStorage.setItem('user_pix_key', updatePayload.pix_key || '');
+                    localStorage.setItem('user_work_mode', updatePayload.work_mode || '');
+                    localStorage.setItem('user_taxa_deslocamento', updatePayload.taxa_deslocamento || '');
                 } else {
                     localStorage.setItem('user_birth_date', updatePayload.birth_date || '');
                     localStorage.setItem('user_bio', updatePayload.bio || '');
@@ -2112,14 +2681,21 @@ document.addEventListener('DOMContentLoaded', () => {
             el.style.overflow = 'hidden';
             el.style.borderRadius = '50%';
             
-            if (photo && photo !== '') {
-                el.innerHTML = `<img src="${photo}" style="width:100%; height:100%; object-fit:cover;">`;
+            if (type === 'admin') {
+                // Admin avatar: force logo image
+                el.innerHTML = `<img src="/assets/logo.png" style="width:100%; height:100%; object-fit:contain;" />`;
+                el.style.background = 'transparent';
+                el.style.border = el.id === 'nav-profile-icon' ? 'none' : '3px solid var(--border)';
+            } else if (photo && photo !== '' && photo !== 'null' && photo !== 'undefined') {
+                // User has a photo (including Google accounts)
+                el.innerHTML = `<img src="${photo}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;">`;
                 el.style.background = 'transparent';
                 el.style.border = el.id === 'nav-profile-icon' ? 'none' : '3px solid var(--border)';
             } else {
+                // Fallback to initials
                 const initial = (name || 'U').charAt(0).toUpperCase();
-                el.innerHTML = `<span style="font-size: ${size}; font-weight: 800; color: ${type === 'professional' || type === 'admin' ? '#fff' : '#000'}">${initial}</span>`;
-                el.style.background = type === 'admin' ? 'linear-gradient(135deg, #a855f7, #6b21a8)' : (type === 'professional' ? 'linear-gradient(135deg, #333, #000)' : 'linear-gradient(135deg, #eee, #999)');
+                el.innerHTML = `<span style="font-size: ${size}; font-weight: 800; color: ${type === 'professional' ? '#fff' : '#000'}">${initial}</span>`;
+                el.style.background = type === 'professional' ? 'linear-gradient(135deg, #333, #000)' : 'linear-gradient(135deg, #eee, #999)';
                 el.style.border = el.id === 'nav-profile-icon' ? 'none' : '3px solid var(--border)';
             }
         };
@@ -2159,8 +2735,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const pointsInlineEl = document.getElementById('user-points-inline-display');
         if (pointsContainer && pointsInlineEl) {
             const points = localStorage.getItem('user_points') || '10';
-            pointsInlineEl.innerText = type === 'admin' ? '♾️ Pontos' : `${points} Pontos`;
-            pointsContainer.style.display = 'flex';
+                        // Adjust admin UI for points and menu labels
+            if (type === 'admin') {
+                // Set points display with icon above text and gray color
+                pointsInlineEl.innerHTML = `<span class="adm-infinity-symbol" style="display:block; font-size:1.2rem; color:gray !important; filter: grayscale(1) opacity(0.65); -webkit-filter: grayscale(1) opacity(0.65);">♾️</span><span>Pontos</span>`;
+                // Rename "Meus Gastos" to "Movimento Total" in menu
+                const gastosHeader = document.querySelector('#gastos h2');
+                if (gastosHeader) {
+                    gastosHeader.innerText = 'Movimento Total';
+                }
+                // Ensure Vitrine de Produtos Plus guide/button is visible (assuming element with id "vitrine-plus-guide")
+                const vitrineGuide = document.getElementById('vitrine-plus-guide');
+                if (vitrineGuide) vitrineGuide.style.display = 'flex';
+            } else {
+                pointsInlineEl.innerText = `${points} Pontos`;
+                const gastosHeader = document.querySelector('#gastos h2');
+                if (gastosHeader) {
+                    gastosHeader.innerText = 'Meus Gastos';
+                }
+            }
+            // Existing code for plan button remains unchanged
             
             // Set current plan text
             const planEl = document.getElementById('user-plan-display');
@@ -2195,6 +2789,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const plansBtn = document.querySelector('button[onclick="showOverlay(\'plans-selection\')"]');
             if (plansBtn) {
                 plansBtn.innerText = type === 'admin' ? 'Pontos' : 'Planos';
+            }
+        }
+
+        // Toggle Configurar Cartão de Visita button visibility
+        const configCartaoBtn = document.getElementById('menu-item-config-cartao');
+        if (configCartaoBtn) {
+            configCartaoBtn.style.display = (type === 'professional' || type === 'admin') ? 'flex' : 'none';
+        }
+
+        // Toggle Configuração de Visita Profissional button visibility
+        const configVisitaBtn = document.getElementById('menu-item-config-visita');
+        if (configVisitaBtn) {
+            configVisitaBtn.style.display = (type === 'professional' || type === 'admin') ? 'flex' : 'none';
+        }
+
+        // Trigger onboarding tour if logged in and not completed
+        if (localStorage.getItem('user_id') && !localStorage.getItem('onboarding_tour_completed')) {
+            const mainContent = document.getElementById('main-content');
+            if (mainContent && mainContent.classList.contains('active')) {
+                setTimeout(() => {
+                    if (typeof window.startOnboardingTour === 'function') {
+                        window.startOnboardingTour();
+                    }
+                }, 1000);
             }
         }
     }
@@ -2439,7 +3057,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             container.innerHTML = data.map((u, i) => {
                 const avatarHtml = u.avatar_url
-                    ? `<img src="${u.avatar_url}" style="width:44px; height:44px; object-fit:cover; border-radius:50%; border:1px solid #333;">`
+                    ? `<img src="${u.avatar_url}" referrerpolicy="no-referrer" style="width:44px; height:44px; object-fit:cover; border-radius:50%; border:1px solid #333;">`
                     : `<div style="width:44px; height:44px; background:#111; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.1rem; border:1px solid #222;">${(u.full_name || '?')[0].toUpperCase()}</div>`;
                 return `
                 <div style="display:flex; align-items:center; gap:1rem; padding:1rem; border-bottom:${i < data.length - 1 ? '1px solid #222' : 'none'};">
@@ -2489,13 +3107,19 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
-    function renderCatalogo() {
+    async function renderCatalogo() {
         const container = document.getElementById('catalogo-items');
         const planDisplay = document.getElementById('catalogo-current-plan');
         const addBtn = document.getElementById('btn-add-service');
         const limitMsg = document.getElementById('catalogo-limit-msg');
         
         if (!container) return;
+
+        const user = await getCurrentUser();
+        if (!user) {
+            container.innerHTML = '<p style="color: #ff4d4d; text-align:center; padding: 2rem;">Por favor, faça login para gerenciar seu catálogo.</p>';
+            return;
+        }
 
         let plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
         if (plan === 'Free' || plan === 'Plano Comum') {
@@ -2504,22 +3128,51 @@ document.addEventListener('DOMContentLoaded', () => {
         if (planDisplay) planDisplay.innerText = plan;
 
         // Limite de 1 para Grátis, 3 para Essencial, 5 para Plus
-        const limit = (plan === 'Plano Plus' || plan === 'ADM') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
+        const type = localStorage.getItem('user_type') || 'client';
+        const limit = (plan === 'Plano Plus' || plan === 'admin' || type === 'admin') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
 
-        // Mock de serviços do usuário logado (normalmente viria do banco)
-        const services = [
-            { name: 'Corte Social', price: '45,00' },
-            { name: 'Barba Completa', price: '30,00' },
-            { name: 'Corte + Barba', price: '70,00' }
-        ];
+        let services = [];
+        try {
+            const { data, error } = await supabaseClient.from('profiles').select('services').eq('id', user.id).single();
+            if (!error && data && data.services) {
+                services = Array.isArray(data.services) ? data.services : (typeof data.services === 'string' ? JSON.parse(data.services) : []);
+            } else {
+                const key = 'local_services_' + user.id;
+                services = JSON.parse(localStorage.getItem(key) || '[]');
+            }
+        } catch (e) {
+            const key = 'local_services_' + user.id;
+            services = JSON.parse(localStorage.getItem(key) || '[]');
+        }
+
+        // Se o catálogo estiver vazio, carrega os defaults respeitando o limite do plano
+        if (services.length === 0) {
+            const key = 'local_services_' + user.id;
+            const alreadyChecked = localStorage.getItem('checked_default_services_' + user.id);
+            if (!alreadyChecked) {
+                localStorage.setItem('checked_default_services_' + user.id, 'true');
+                services = [
+                    { id: 'srv-1', name: 'Corte Social', description: 'Corte tesoura ou máquina com acabamento.', duration: 40, price: '45,00' },
+                    { id: 'srv-2', name: 'Barba Completa', description: 'Toalha quente e produtos premium.', duration: 30, price: '30,00' },
+                    { id: 'srv-3', name: 'Corte + Barba', description: 'Combo completo para renovar o visual.', duration: 70, price: '70,00' }
+                ].slice(0, limit);
+
+                localStorage.setItem(key, JSON.stringify(services));
+                if (supabaseClient) {
+                    supabaseClient.from('profiles').update({ services: services }).eq('id', user.id).then(() => {});
+                }
+            }
+        }
 
         container.innerHTML = services.map(s => `
             <div style="background:#111; padding:1.25rem; border-radius:16px; border:1px solid #222; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-weight: 700; color: #fff;">${s.name}</div>
-                    <div style="font-size: 0.8rem; color: #4ade80; font-weight: 800; margin-top: 2px;">R$ ${s.price}</div>
+                    <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">${s.name}</div>
+                    <div style="font-size: 0.75rem; color: #888; margin-top: 4px;">${s.description || ''}</div>
+                    <div style="font-size: 0.7rem; color: #666; font-weight: 600; margin-top: 2px;">🕒 ${s.duration || 30} min</div>
+                    <div style="font-size: 0.85rem; color: #10b981; font-weight: 800; margin-top: 4px;">R$ ${s.price}</div>
                 </div>
-                <button style="background: none; border: none; color: #444; font-size: 1.1rem;">✏️</button>
+                <button onclick="window.deleteService('${s.id}')" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">🗑️</button>
             </div>
         `).join('');
 
@@ -2530,16 +3183,174 @@ document.addEventListener('DOMContentLoaded', () => {
                 addBtn.style.opacity = '0.3';
                 addBtn.style.filter = 'grayscale(1)';
             }
-            if (limitMsg) limitMsg.style.display = 'block';
+            if (limitMsg) {
+                limitMsg.style.display = 'block';
+                limitMsg.innerHTML = `Você atingiu o limite do seu plano (${limit} serviços). <a href="javascript:void(0)" onclick="showOverlay('plans-selection')" style="color: #a855f7; font-weight: 700;">Faça Upgrade</a>`;
+            }
         } else {
             if (addBtn) {
                 addBtn.disabled = false;
                 addBtn.style.opacity = '1';
                 addBtn.style.filter = 'none';
+                addBtn.onclick = () => {
+                    window.openAddServiceForm();
+                };
             }
             if (limitMsg) limitMsg.style.display = 'none';
         }
     }
+
+    // Expose dynamic catalog functions globally
+    window.showConfigCartaoModal = function() {
+        const type = localStorage.getItem('user_type') || 'client';
+        let plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
+        if (plan === 'Free' || plan === 'Plano Comum') plan = 'Plano Grátis';
+
+        const vitrineBtn = document.getElementById('config-cartao-vitrine-btn');
+        if (vitrineBtn) {
+            const isPlus = plan === 'Plano Plus' || type === 'admin';
+            if (isPlus) {
+                vitrineBtn.style.opacity = '1';
+                vitrineBtn.style.pointerEvents = 'auto';
+                vitrineBtn.onclick = () => {
+                    hideOverlay('config-cartao-modal');
+                    showOverlay('produtos-overlay');
+                };
+            } else {
+                vitrineBtn.style.opacity = '0.4';
+                vitrineBtn.onclick = () => {
+                    alert("A Vitrine de Produtos Plus está disponível apenas no Plano Plus. Faça upgrade da sua conta para acessar!");
+                    showOverlay('plans-selection');
+                };
+            }
+        }
+        showOverlay('config-cartao-modal');
+    };
+
+    window.openAddServiceForm = () => {
+        const form = document.getElementById('add-service-form');
+        if (form) form.reset();
+        showOverlay('add-service-modal');
+    };
+
+    window.closeAddServiceForm = () => {
+        hideOverlay('add-service-modal');
+    };
+
+    window.saveNewService = async (event) => {
+        event.preventDefault();
+        const user = await getCurrentUser();
+        if (!user) return alert("Usuário não identificado.");
+
+        const name = document.getElementById('service-name').value;
+        const desc = document.getElementById('service-desc').value;
+        const duration = parseInt(document.getElementById('service-duration').value) || 30;
+        const priceRaw = document.getElementById('service-price').value.replace(',', '.');
+        const priceVal = parseFloat(priceRaw) || 0.00;
+        const priceFormatted = priceVal.toFixed(2).replace('.', ',');
+
+        const newService = {
+            id: 'srv-' + Date.now(),
+            name,
+            description: desc,
+            duration,
+            price: priceFormatted
+        };
+
+        let services = [];
+        try {
+            const { data, error } = await supabaseClient.from('profiles').select('services').eq('id', user.id).single();
+            if (!error && data && data.services) {
+                services = Array.isArray(data.services) ? data.services : (typeof data.services === 'string' ? JSON.parse(data.services) : []);
+            } else {
+                const key = 'local_services_' + user.id;
+                services = JSON.parse(localStorage.getItem(key) || '[]');
+            }
+        } catch (e) {
+            const key = 'local_services_' + user.id;
+            services = JSON.parse(localStorage.getItem(key) || '[]');
+        }
+
+        let plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
+        if (plan === 'Free' || plan === 'Plano Comum') plan = 'Plano Grátis';
+        const type = localStorage.getItem('user_type') || 'client';
+        const limit = (plan === 'Plano Plus' || plan === 'admin' || type === 'admin') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
+
+        if (services.length >= limit) {
+            alert(`Você atingiu o limite do seu plano (${limit} serviços). Faça upgrade para adicionar mais.`);
+            return;
+        }
+
+        services.push(newService);
+
+        try {
+            const key = 'local_services_' + user.id;
+            localStorage.setItem(key, JSON.stringify(services));
+
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('profiles').update({ services: services }).eq('id', user.id);
+                if (error) throw error;
+            }
+        } catch (e) {
+            console.warn("Error syncing services to Supabase, saved locally:", e);
+        }
+
+        const localProf = DATA.professionals.find(p => p.id === user.id);
+        if (localProf) {
+            localProf.services = services;
+        }
+
+        window.closeAddServiceForm();
+        renderCatalogo();
+        
+        if (typeof showSuccessModal === 'function') {
+            showSuccessModal('Sucesso!', 'Serviço adicionado ao seu catálogo.');
+        } else {
+            alert("Serviço adicionado com sucesso!");
+        }
+    };
+
+    window.deleteService = async (id) => {
+        if (!confirm("Deseja realmente remover este serviço?")) return;
+        
+        const user = await getCurrentUser();
+        if (!user) return;
+
+        let services = [];
+        try {
+            const { data, error } = await supabaseClient.from('profiles').select('services').eq('id', user.id).single();
+            if (!error && data && data.services) {
+                services = Array.isArray(data.services) ? data.services : (typeof data.services === 'string' ? JSON.parse(data.services) : []);
+            } else {
+                const key = 'local_services_' + user.id;
+                services = JSON.parse(localStorage.getItem(key) || '[]');
+            }
+        } catch (e) {
+            const key = 'local_services_' + user.id;
+            services = JSON.parse(localStorage.getItem(key) || '[]');
+        }
+
+        services = services.filter(s => s.id !== id && String(s.id) !== String(id));
+
+        try {
+            const key = 'local_services_' + user.id;
+            localStorage.setItem(key, JSON.stringify(services));
+
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('profiles').update({ services: services }).eq('id', user.id);
+                if (error) throw error;
+            }
+        } catch (e) {
+            console.warn("Could not sync deleted service to Supabase, updated locally:", e);
+        }
+
+        const localProf = DATA.professionals.find(p => p.id === user.id);
+        if (localProf) {
+            localProf.services = services;
+        }
+
+        renderCatalogo();
+    };
 
     function renderMapaRede() {
         const addr = document.getElementById('map-address-val');
@@ -2574,6 +3385,184 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function setupConfigVisitaListener() {
+        // Handle radio changes in registration form
+        const regRadios = document.querySelectorAll('input[name="prof-work-mode"]');
+        regRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const feeGroup = document.getElementById('prof-visitation-fee-group');
+                if (feeGroup) {
+                    feeGroup.style.display = (e.target.value === 'domicilio' || e.target.value === 'ambos') ? 'block' : 'none';
+                }
+            });
+        });
+    }
+
+    window.openCartaoEditMode = function() {
+        window.isEditingCartao = true;
+        hideOverlay('config-cartao-modal');
+        const id = localStorage.getItem('user_id');
+        if (id) {
+            window.renderProfessionalHome(id);
+            showOverlay('professional-home');
+        }
+    };
+
+    window.editCartaoCover = async function() {
+        const url = prompt("Digite a URL da nova imagem de fundo (Capa):", "");
+        if (url !== null && url.trim() !== "") {
+            const id = localStorage.getItem('user_id');
+            if (supabaseClient && !id.startsWith('prof-')) {
+                await supabaseClient.from('profiles').update({ cover_url: url.trim() }).eq('id', id);
+            }
+            const prof = DATA.professionals.find(p => p.id === id);
+            if (prof) prof.cover_url = url.trim();
+            window.renderProfessionalHome(id);
+        }
+    };
+
+    window.editCartaoAvatar = async function() {
+        const url = prompt("Digite a URL da nova imagem de perfil:", "");
+        if (url !== null && url.trim() !== "") {
+            const id = localStorage.getItem('user_id');
+            if (supabaseClient && !id.startsWith('prof-')) {
+                await supabaseClient.from('profiles').update({ avatar_url: url.trim() }).eq('id', id);
+            }
+            localStorage.setItem('user_photo', url.trim());
+            const prof = DATA.professionals.find(p => p.id === id);
+            if (prof) prof.avatar_url = url.trim();
+            window.renderProfessionalHome(id);
+            if (typeof Z === 'function') Z();
+        }
+    };
+
+    window.editCartaoBio = async function() {
+        const bio = prompt("Digite o novo texto para a seção Sobre:");
+        if (bio !== null) {
+            const id = localStorage.getItem('user_id');
+            if (supabaseClient && !id.startsWith('prof-')) {
+                await supabaseClient.from('profiles').update({ bio: bio.trim() }).eq('id', id);
+            }
+            localStorage.setItem('user_bio', bio.trim());
+            const prof = DATA.professionals.find(p => p.id === id);
+            if (prof) prof.bio = bio.trim();
+            window.renderProfessionalHome(id);
+        }
+    };
+
+    window.editCartaoWorkMode = async function() {
+        const val = prompt("Modo de Atendimento:\n1 - Apenas Estabelecimento\n2 - Apenas Domicílio\n3 - Ambos", "1");
+        if (!val) return;
+        const modeMap = {'1': 'estabelecimento', '2': 'domicilio', '3': 'ambos'};
+        const mode = modeMap[val] || 'estabelecimento';
+        let fee = 0;
+        if (mode !== 'estabelecimento') {
+            const feeStr = prompt("Taxa de Deslocamento (apenas números, ex: 15.50):", "0");
+            fee = parseFloat(feeStr.replace(',', '.')) || 0;
+        }
+        const id = localStorage.getItem('user_id');
+        if (supabaseClient && !id.startsWith('prof-')) {
+            await supabaseClient.from('profiles').update({ work_mode: mode, taxa_deslocamento: fee }).eq('id', id);
+        }
+        localStorage.setItem('user_work_mode', mode);
+        localStorage.setItem('user_taxa_deslocamento', fee.toString());
+        const prof = (typeof DATA !== 'undefined' && DATA.professionals) ? DATA.professionals.find(p => p.id === id) : null;
+        if (prof) { prof.work_mode = mode; prof.taxa_deslocamento = fee; }
+        window.renderProfessionalHome(id);
+    };
+
+    window.editCartaoLocation = async function() {
+        const city = prompt("Sua Cidade/Região (Ex: São Paulo e Grande ABC):", "");
+        if (!city) return;
+        const address = prompt("Seu Endereço Completo:", "");
+        if (!address) return;
+        const id = localStorage.getItem('user_id');
+        if (supabaseClient && !id.startsWith('prof-')) {
+            await supabaseClient.from('profiles').update({ city: city.trim(), address: address.trim() }).eq('id', id);
+        }
+        const prof = (typeof DATA !== 'undefined' && DATA.professionals) ? DATA.professionals.find(p => p.id === id) : null;
+        if (prof) { prof.city = city.trim(); prof.address = address.trim(); }
+        window.renderProfessionalHome(id);
+    };
+
+    window.editCartaoServicePhotos = async function(serviceId) {
+        const id = localStorage.getItem('user_id');
+        let services = [];
+        try {
+            if (supabaseClient && !id.startsWith('prof-')) {
+                const { data } = await supabaseClient.from('profiles').select('services').eq('id', id).single();
+                if (data && data.services) services = typeof data.services === 'string' ? JSON.parse(data.services) : data.services;
+            }
+            if (services.length === 0) services = JSON.parse(localStorage.getItem('local_services_' + id) || '[]');
+        } catch {
+            services = JSON.parse(localStorage.getItem('local_services_' + id) || '[]');
+        }
+        const idx = services.findIndex(s => s.id === serviceId);
+        if (idx === -1) return;
+        
+        const urls = prompt("Cole as URLs das imagens separadas por vírgula (máximo de 5):", (services[idx].images || []).join(', '));
+        if (urls === null) return;
+        
+        let imgArray = urls.split(',').map(u => u.trim()).filter(u => u.length > 0).slice(0, 5);
+        services[idx].images = imgArray;
+        
+        if (supabaseClient && !id.startsWith('prof-')) {
+            await supabaseClient.from('profiles').update({ services: services }).eq('id', id);
+        }
+        localStorage.setItem('local_services_' + id, JSON.stringify(services));
+        const prof = (typeof DATA !== 'undefined' && DATA.professionals) ? DATA.professionals.find(p => p.id === id) : null;
+        if (prof) prof.services = services;
+        window.renderProfessionalHome(id);
+    };
+
+    window.editCartaoService = async function(serviceId) {
+        const userId = localStorage.getItem('user_id');
+        let services = [];
+        try {
+            if (supabaseClient && !userId.startsWith('prof-')) {
+                const { data } = await supabaseClient.from('profiles').select('services').eq('id', userId).single();
+                if (data && data.services) {
+                    services = typeof data.services === 'string' ? JSON.parse(data.services) : data.services;
+                } else {
+                    services = JSON.parse(localStorage.getItem('local_services_' + userId) || '[]');
+                }
+            } else {
+                services = JSON.parse(localStorage.getItem('local_services_' + userId) || '[]');
+            }
+        } catch(e) {
+            services = JSON.parse(localStorage.getItem('local_services_' + userId) || '[]');
+        }
+        
+        const sIndex = services.findIndex(s => s.id === serviceId);
+        if (sIndex === -1) return;
+        const s = services[sIndex];
+
+        const newName = prompt("Nome do Serviço:", s.name);
+        if (newName === null) return;
+        const newDesc = prompt("Descrição:", s.description || "");
+        if (newDesc === null) return;
+        const newPrice = prompt("Preço (ex: 45,00 sem R$):", s.price);
+        if (newPrice === null) return;
+        const newDuration = prompt("Tempo em minutos (ex: 30):", s.duration || 30);
+        if (newDuration === null) return;
+
+        services[sIndex] = {
+            ...s,
+            name: newName.trim() || s.name,
+            description: newDesc.trim(),
+            price: newPrice.trim() || s.price,
+            duration: parseInt(newDuration, 10) || s.duration
+        };
+
+        if (supabaseClient && !userId.startsWith('prof-')) {
+            await supabaseClient.from('profiles').update({ services: services }).eq('id', userId);
+        }
+        localStorage.setItem('local_services_' + userId, JSON.stringify(services));
+        const prof = DATA.professionals.find(p => p.id === userId);
+        if (prof) prof.services = services;
+        window.renderProfessionalHome(userId);
+    };
+
     // --- Home Renders (Public Profiles) ---
     window.renderProfessionalHome = async function(id) {
         const container = document.getElementById('professional-home-content');
@@ -2592,62 +3581,192 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!prof) throw new Error("Profissional não encontrado");
 
+            // Check if we are in Edit Mode
+            const isOwnerEditing = window.isEditingCartao && (id === localStorage.getItem('user_id'));
+
+            // Session-locked Visitors Count increment
+            const sessionVisitedKey = 'visited_prof_' + prof.id;
+            if (!sessionStorage.getItem(sessionVisitedKey) && !isOwnerEditing) {
+                sessionStorage.setItem(sessionVisitedKey, 'true');
+                prof.visitors_count = (prof.visitors_count || 0) + 1;
+                // Sync in background with Supabase
+                if (supabaseClient && !id.startsWith('prof-')) {
+                    supabaseClient.from('profiles')
+                        .update({ visitors_count: prof.visitors_count })
+                        .eq('id', prof.id)
+                        .then(({ error }) => {
+                            if (error) console.warn("Erro ao atualizar visitantes no Supabase:", error);
+                        });
+                }
+            }
+
+            // Services catalog plan limits check
+            let plan = prof.subscription_plan || 'Plano Grátis';
+            if (plan === 'Free' || plan === 'Plano Comum') plan = 'Plano Grátis';
+            const type = prof.user_type || 'professional';
+            const displayLimit = (plan === 'Plano Plus' || plan === 'admin' || type === 'admin') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
+
             const avatarHtml = prof.avatar_url 
-                ? `<img src="${prof.avatar_url}" style="width:130px; height:130px; object-fit:cover; border-radius:35px; border: 4px solid var(--bg);">`
+                ? `<img src="${prof.avatar_url}" referrerpolicy="no-referrer" style="width:130px; height:130px; object-fit:cover; border-radius:35px; border: 4px solid var(--bg);">`
                 : `<div style="width:130px; height:130px; background:linear-gradient(135deg, #a855f7, #6b21a8); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:3rem; border-radius:35px; border: 4px solid var(--bg);">${(prof.full_name || 'P')[0].toUpperCase()}</div>`;
 
-            const servicesHtml = (prof.services || []).map(s => `
-                <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
-                        <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
-                        <div style="color: #555; font-size: 0.7rem; font-weight: 700; margin-top: 4px;">🕒 ${s.duration || 30} min</div>
+            const avatarWrapper = isOwnerEditing
+                ? `<div style="position: relative; display: inline-block;">
+                        ${avatarHtml}
+                        <button onclick="window.editCartaoAvatar()" style="position: absolute; bottom: 0px; right: 0px; background: rgba(0,0,0,0.7); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 34px; height: 34px; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">✏️</button>
+                   </div>`
+                : `<div style="display: inline-block; position: relative;">
+                        ${avatarHtml}
+                        <div style="position: absolute; bottom: 10px; right: 10px; background: #10B981; width: 25px; height: 25px; border-radius: 50%; border: 3px solid var(--bg);"></div>
+                   </div>`;
+
+            const displayedServices = (prof.services || []).slice(0, displayLimit);
+            const servicesHtml = displayedServices.map(s => {
+                const imgsHtml = (s.images && s.images.length > 0) ? `
+                    <div style="display:flex; gap: 8px; margin-top: 10px; overflow-x: auto; padding-bottom: 5px;">
+                        ${s.images.map(img => `<img src="${img}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #333;">`).join('')}
                     </div>
-                    <div style="color: #10B981; font-weight: 900; font-size: 1rem;">R$ ${s.price}</div>
+                ` : '';
+                return `
+                <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="flex: 1; padding-right: 1rem;">
+                            <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
+                            <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
+                            <div style="color: #555; font-size: 0.7rem; font-weight: 700; margin-top: 4px;">🕒 ${s.duration || 30} min</div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                            <div style="color: #FCD34D; font-weight: 900; font-size: 1rem; white-space: nowrap;">R$ ${s.price}</div>
+                            ${isOwnerEditing ? `<div style="display:flex; gap: 4px;">
+                                <button onclick="window.editCartaoServicePhotos('${s.id}')" style="background: rgba(168,85,247,0.2); color: #c084fc; border:1px solid rgba(168,85,247,0.3); border-radius: 8px; padding: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">📸</button>
+                                <button onclick="window.editCartaoService('${s.id}')" style="background: rgba(255,255,255,0.1); color: #fff; border:none; border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">✏️</button>
+                            </div>` : ''}
+                        </div>
+                    </div>
+                    ${imgsHtml}
                 </div>
-            `).join('');
+            `;
+            }).join('');
+
+            // Vitrine HTML for Plus users
+            let vitrineHtml = '';
+            if (plan === 'Plano Plus' || type === 'admin') {
+                const localProducts = JSON.parse(localStorage.getItem('user_products') || '[]');
+                const mockProducts = window.defaultMockProducts || [];
+                const userProducts = [...mockProducts, ...localProducts].filter(p => p.professional_id === prof.id);
+                
+                // Deduplicate by ID
+                const seenProdIds = new Set();
+                const uniqueUserProducts = [];
+                for (const p of userProducts) {
+                    if (!seenProdIds.has(p.id)) {
+                        seenProdIds.add(p.id);
+                        uniqueUserProducts.push(p);
+                    }
+                }
+                
+                if (uniqueUserProducts.length > 0 || isOwnerEditing) {
+                    vitrineHtml = `
+                        <div style="margin-top: 2.5rem; text-align: center;">
+                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1.25rem; letter-spacing: 1px; background: linear-gradient(90deg, #FCD34D, #b085f5); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">🛍️ VITRINE ${isOwnerEditing ? `<span onclick="hideOverlay('professional-home'); window.openProductsManager()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px; -webkit-text-fill-color: initial;">✏️</span>` : ''}</h4>
+                            ${uniqueUserProducts.length > 0 ? `<div style="display: flex; overflow-x: auto; gap: 1rem; padding-bottom: 1rem; margin: 0 -1.5rem; padding: 0 1.5rem;">` + uniqueUserProducts.map(p => `
+                                <div style="flex: 0 0 140px; background: #111; border: 1px solid #222; border-radius: 16px; padding: 8px; text-align: left;">
+                                    <img src="${p.image_url}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 10px; margin-bottom: 8px;">
+                                    <div style="font-weight: 800; font-size: 0.8rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.name}</div>
+                                    <div style="color: #FCD34D; font-weight: 900; font-size: 0.9rem; margin-top: 4px;">R$ ${parseFloat(p.price).toFixed(2).replace('.', ',')}</div>
+                                </div>
+                            `).join('') + `</div>` : '<p style="color:#444; font-size:0.8rem;">Nenhum produto cadastrado na vitrine.</p>'}
+                        </div>
+                    `;
+                }
+            }
+
+            // Follow button status
+            const followingKey = 'following_prof_' + prof.id;
+            let isFollowing = localStorage.getItem(followingKey) === 'true';
 
             container.innerHTML = `
                 <div class="prof-cover" style="height: 220px; background: #000; position: relative; overflow: hidden;">
                     <img src="${prof.cover_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=800'}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.6;">
                     <div style="position: absolute; inset: 0; background: linear-gradient(to bottom, transparent, #000);"></div>
+                    ${isOwnerEditing ? `<button onclick="window.editCartaoCover()" style="position: absolute; top: 15px; right: 15px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 6px 12px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">✏️ Editar Capa</button>` : ''}
                 </div>
                 <div style="padding: 0 1.5rem; margin-top: -65px; position: relative; text-align: center;">
-                    <div style="display: inline-block; position: relative;">
-                        ${avatarHtml}
-                        <div style="position: absolute; bottom: 10px; right: 10px; background: #10B981; width: 25px; height: 25px; border-radius: 50%; border: 3px solid var(--bg);"></div>
-                    </div>
+                    ${avatarWrapper}
                     <h2 style="margin-top: 1rem; font-size: 1.75rem; font-weight: 900; color: #fff;">${prof.full_name || 'Profissional'}</h2>
                     <p style="color: var(--primary-accent); font-weight: 800; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1.5px; margin-top: 4px;">${prof.category || 'Especialista'}</p>
                     
+                    ${!isOwnerEditing ? `<div style="margin-top: 1rem;">
+                        <button id="btn-follow-prof" style="${isFollowing 
+                            ? 'background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399;' 
+                            : 'background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff;'} font-weight: 800; font-size: 0.8rem; padding: 8px 24px; border-radius: 50px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: inline-flex; align-items: center; gap: 6px; letter-spacing: 0.5px;">
+                            ${isFollowing ? '✓ SEGUINDO' : '+ SEGUIR'}
+                        </button>
+                    </div>` : ''}
+
                     <div style="display: flex; justify-content: center; gap: 1.5rem; margin-top: 2rem;">
                         <div style="text-align: center;">
                             <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">★ ${prof.rating || '5.0'}</div>
                             <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Rating</div>
                         </div>
                         <div style="text-align: center;">
-                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${prof.reviews || 0}</div>
-                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Reviews</div>
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${prof.visitors_count || 0}</div>
+                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Visitantes</div>
                         </div>
                         <div style="text-align: center;">
                             <div style="font-size: 1.25rem; font-weight: 900; color: #fff;">${prof.points || 0}</div>
                             <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Pontos</div>
                         </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 1.25rem; font-weight: 900; color: #fff;" id="prof-home-followers-count">${prof.followers_count || 0}</div>
+                            <div style="font-size: 0.6rem; color: #555; font-weight: 800; text-transform: uppercase;">Seguidores</div>
+                        </div>
                     </div>
 
-                    <div style="margin-top: 2.5rem; text-align: left;">
-                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">SOBRE</h4>
-                        <p style="color: #888; font-size: 0.9rem; line-height: 1.6;">${prof.bio || 'Profissional qualificado da comunidade Zero, focado em entregar a melhor experiência.'}</p>
+                    <div style="margin-top: 2.5rem; text-align: center;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">SOBRE ${isOwnerEditing ? `<span onclick="window.editCartaoBio()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
+                        <p style="color: #888; font-size: 0.9rem; line-height: 1.6; text-align: left;">${prof.bio || 'Profissional qualificado da comunidade Zero, focado em entregar a melhor experiência.'}</p>
                     </div>
 
-                    <div style="margin-top: 2.5rem; text-align: left;">
+                    <div style="margin-top: 2.5rem; text-align: center;">
                         <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1.25rem; letter-spacing: 1px;">CATÁLOGO DE SERVIÇOS</h4>
-                        ${servicesHtml || '<p style="color:#444; font-size:0.8rem;">Nenhum serviço cadastrado.</p>'}
+                        <div style="text-align: left;">
+                            ${servicesHtml || '<p style="color:#444; font-size:0.8rem;">Nenhum serviço cadastrado.</p>'}
+                        </div>
                     </div>
 
-                    <div style="margin-top: 2rem; text-align: left; padding-bottom: 150px;">
-                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO</h4>
-                        <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; display: flex; align-items: center; gap: 1rem;">
+                    ${vitrineHtml}
+
+                    ${(() => {
+                        const wm = prof.work_mode || 'estabelecimento';
+                        const labels = {
+                            'estabelecimento': { icon: '🏪', text: 'Atende no estabelecimento' },
+                            'domicilio': { icon: '🏠', text: 'Vai até a residência do cliente' },
+                            'ambos': { icon: '🔄', text: 'Atende no estabelecimento e a domicílio' }
+                        };
+                        const info = labels[wm] || labels['estabelecimento'];
+                        const taxaHtml = (wm === 'domicilio' || wm === 'ambos') && prof.taxa_deslocamento
+                            ? `<div style="margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                    <span style="font-size: 0.75rem; color: #888;">Taxa de deslocamento:</span>
+                                    <span style="color: #FCD34D; font-weight: 900; font-size: 0.9rem;">R$ ${parseFloat(prof.taxa_deslocamento).toFixed(2).replace('.', ',')}</span>
+                               </div>`
+                            : '';
+                        return `
+                        <div style="margin-top: 2rem; text-align: center;">
+                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">MODO DE ATENDIMENTO ${isOwnerEditing ? `<span onclick="window.editCartaoWorkMode()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
+                            <div style="background: rgba(168, 85, 247, 0.08); padding: 1rem 1.25rem; border-radius: 16px; border: 1px solid rgba(168, 85, 247, 0.2); display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-size: 1.4rem;">${info.icon}</span>
+                                    <span style="font-weight: 700; color: #e2d1f9; font-size: 0.9rem;">${info.text}</span>
+                                </div>
+                                ${taxaHtml}
+                            </div>
+                        </div>`;
+                    })()}
+
+                    <div style="margin-top: 2rem; text-align: center; padding-bottom: 150px;">
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO ${isOwnerEditing ? `<span onclick="window.editCartaoLocation()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
+                        <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; display: flex; align-items: center; gap: 1rem; text-align: left; justify-content: flex-start;">
                             <div style="font-size: 1.5rem;">📍</div>
                             <div>
                                 <div style="font-weight: 800; color: #fff; font-size: 0.9rem;">${prof.city || 'Cidade não informada'}</div>
@@ -2659,6 +3778,43 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             // Action listeners
+            const followBtn = document.getElementById('btn-follow-prof');
+            if (followBtn) {
+                followBtn.onclick = () => {
+                    isFollowing = !isFollowing;
+                    localStorage.setItem(followingKey, isFollowing ? 'true' : 'false');
+                    
+                    if (isFollowing) {
+                        prof.followers_count = (prof.followers_count || 0) + 1;
+                        followBtn.innerText = '✓ SEGUINDO';
+                        followBtn.style.background = 'rgba(16, 185, 129, 0.15)';
+                        followBtn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                        followBtn.style.color = '#34d399';
+                    } else {
+                        prof.followers_count = Math.max(0, (prof.followers_count || 0) - 1);
+                        followBtn.innerText = '+ SEGUIR';
+                        followBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+                        followBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                        followBtn.style.color = '#fff';
+                    }
+
+                    const followersCountEl = document.getElementById('prof-home-followers-count');
+                    if (followersCountEl) {
+                        followersCountEl.innerText = prof.followers_count;
+                    }
+
+                    // Sync in background with Supabase
+                    if (supabaseClient && !id.startsWith('prof-')) {
+                        supabaseClient.from('profiles')
+                            .update({ followers_count: prof.followers_count })
+                            .eq('id', prof.id)
+                            .then(({ error }) => {
+                                if (error) console.warn("Erro ao atualizar seguidores no Supabase:", error);
+                            });
+                    }
+                };
+            }
+
             const scheduleBtn = document.getElementById('btn-prof-home-schedule');
             if (scheduleBtn) {
                 scheduleBtn.onclick = () => {
@@ -2701,7 +3857,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!client) throw new Error("Cliente não encontrado");
 
             const avatarHtml = client.avatar_url 
-                ? `<img src="${client.avatar_url}" style="width:130px; height:130px; object-fit:cover; border-radius:50%; border: 4px solid var(--bg);">`
+                ? `<img src="${client.avatar_url}" referrerpolicy="no-referrer" style="width:130px; height:130px; object-fit:cover; border-radius:50%; border: 4px solid var(--bg);">`
                 : `<div style="width:130px; height:130px; background:linear-gradient(135deg, #444, #111); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:3rem; border-radius:50%; border: 4px solid var(--bg);">${(client.full_name || 'C')[0].toUpperCase()}</div>`;
 
             container.innerHTML = `
@@ -2890,6 +4046,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Cache do UUID do admin para evitar queries repetidas
     let _cachedAdminId = localStorage.getItem('zero_support_admin_id') || null;
+    let _cachedAdminIdsList = null;
+
+    async function getAdminIds() {
+        const adminIds = new Set(['e33bdd17-f6bc-4c72-82cf-c3f76124aca0', '1d304048-e0ba-42ad-b76c-7600c47d7ba1']);
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        
+        if (_cachedAdminIdsList && _cachedAdminIdsList.size > 0) {
+            return _cachedAdminIdsList;
+        }
+
+        try {
+            const stored = localStorage.getItem('zero_admin_ids');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed)) {
+                    parsed.forEach(id => {
+                        if (id && uuidPattern.test(id)) adminIds.add(id);
+                    });
+                }
+            }
+        } catch (e) {
+            console.log("ℹ️ Erro ao carregar admins do localStorage:", e.message || e);
+        }
+
+        if (supabaseClient) {
+            try {
+                const { data: adminProfiles } = await withTimeout(
+                    supabaseClient.from('profiles').select('id').eq('user_type', 'admin'),
+                    2500,
+                    "Timeout ao buscar lista de admins"
+                );
+                if (adminProfiles) {
+                    const freshIds = [];
+                    adminProfiles.forEach(p => {
+                        if (p && p.id && uuidPattern.test(p.id)) {
+                            adminIds.add(p.id);
+                            freshIds.push(p.id);
+                        }
+                    });
+                    localStorage.setItem('zero_admin_ids', JSON.stringify(freshIds));
+                }
+            } catch (err) {
+                console.log("ℹ️ Utilizando lista de admins local/offline devido a timeout ou política COOP:", err.message || err);
+            }
+        }
+
+        _cachedAdminIdsList = adminIds;
+        return adminIds;
+    }
 
     async function resolveTargetId(id) {
         if (!id) return null;
@@ -2900,15 +4105,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const me = await getCurrentUser();
             if (!me) return null;
 
-            const userEmail = me.email ? me.email.toLowerCase() : '';
-            const userMetaName = me.user_metadata?.full_name ? me.user_metadata.full_name.toLowerCase() : '';
-            const storedType = localStorage.getItem('user_type') || '';
-            const isZeroAdm = userEmail.includes('admin@zerosynapses.com') || userEmail.includes('lara.cabeleireira@teste.com') || 
-                              userMetaName.includes('zerozynapse') ||
-                              storedType === 'admin';
+            const isZeroAdm = isAdminUser(me);
 
             if (isZeroAdm) {
-                // Sou o admin, não posso falar com o próprio suporte
+                // Sou um admin — o suporte sou EU para outros usuários
                 return 'SELF_ADMIN';
             }
 
@@ -2918,13 +4118,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return _cachedAdminId;
             }
 
-            // 2. Busca única combinada: nome OU user_type admin (mais eficiente)
+            // 2. Busca admins no banco, excluindo o próprio usuário logado
             try {
                 const { data: adminProfiles, error } = await withTimeout(
                     supabaseClient
                         .from('profiles')
-                        .select('id, full_name, user_type')
-                        .or('full_name.ilike.%zerozynapse%,user_type.eq.admin')
+                        .select('id, full_name, user_type, email')
+                        .eq('user_type', 'admin')
+                        .neq('id', me.id)
                         .order('created_at', { ascending: true })
                         .limit(5),
                     6000,
@@ -2932,23 +4133,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
 
                 if (!error && adminProfiles && adminProfiles.length > 0) {
-                    // Prioriza conta com nome ZeroZynapses; senão usa qualquer admin
-                    const namedAdmin = adminProfiles.find(p => 
-                        p.full_name && p.full_name.toLowerCase().includes('zerozynapse')
-                    );
-                    const resolvedAdmin = namedAdmin || adminProfiles[0];
+                    // Prioridade: 1º conta ZeroZynapses/Lara, 2º zerosynapsesoficial@gmail.com, 3º qualquer outro admin
+                    const resolvedAdmin = adminProfiles.find(p => 
+                        (p.full_name && p.full_name.toLowerCase().includes('zerozynapse')) ||
+                        (p.email && p.email.toLowerCase().includes('lara.cabeleireira@teste.com'))
+                    ) || adminProfiles.find(p =>
+                        (p.email && p.email.toLowerCase().includes('zerosynapsesoficial@gmail.com'))
+                    ) || adminProfiles[0];
                     
                     if (resolvedAdmin) {
                         _cachedAdminId = resolvedAdmin.id;
                     }
                 }
             } catch (err) {
-                console.warn("⚠️ Não foi possível localizar a conta de suporte:", err.message || err);
+                console.log("ℹ️ Não foi possível localizar a conta de suporte dinâmica:", err.message || err);
             }
 
             // 3. Fallback Supremo: Forçar o ID do Admin diretamente
             if (!_cachedAdminId) {
-                console.warn("Usando Fallback Hardcoded para a conta ZeroZynapses.");
+                console.log("ℹ️ Usando Fallback Hardcoded para o admin principal ZeroZynapses.");
                 _cachedAdminId = 'e33bdd17-f6bc-4c72-82cf-c3f76124aca0';
             }
 
@@ -3012,14 +4215,14 @@ document.addEventListener('DOMContentLoaded', () => {
         let localProfile = null;
         if (id === 'support') {
             nameEl.innerText = "Suporte";
-            avatarEl.innerHTML = `<img src="/assets/logo.png" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+            avatarEl.innerHTML = `<img src="/assets/logo.png" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
             avatarEl.style.background = 'transparent';
         } else {
             localProfile = DATA.professionals.find(p => p.id == id) || DATA.clients.find(p => p.id == id);
             if (localProfile) {
                 nameEl.innerText = localProfile.full_name || localProfile.name || "Usuário";
                 if (localProfile.avatar_url) {
-                    avatarEl.innerHTML = `<img src="${localProfile.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+                    avatarEl.innerHTML = `<img src="${localProfile.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
                 } else {
                     avatarEl.style.background = localProfile.avatarColor || '#333';
                     avatarEl.innerText = (localProfile.full_name || localProfile.name || 'U')[0].toUpperCase();
@@ -3076,7 +4279,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (profile) {
                     nameEl.innerText = profile.full_name || "Usuário";
                     if (profile.avatar_url) {
-                        avatarEl.innerHTML = `<img src="${profile.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+                        avatarEl.innerHTML = `<img src="${profile.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
                     }
                 }
             } catch (err) {
@@ -3088,6 +4291,38 @@ document.addEventListener('DOMContentLoaded', () => {
         setupRealtimeMessages(id);
         renderQuickChatHistory(id);
         
+        // Instantly clear and hide notification badges locally when the chat is opened
+        const partnerId = realId || id;
+        const localUnread = (window.unreadMsgCounts && window.unreadMsgCounts[partnerId]) || 
+                            (window.unreadMsgCounts && window.unreadMsgCounts[id]) || 0;
+        
+        if (localUnread > 0) {
+            const menuChatBadge = document.getElementById('menu-chat-badge');
+            if (menuChatBadge) {
+                const currentVal = parseInt(menuChatBadge.innerText) || 0;
+                const newVal = Math.max(0, currentVal - localUnread);
+                if (newVal > 0) {
+                    menuChatBadge.innerText = newVal > 9 ? '9+' : newVal;
+                } else {
+                    menuChatBadge.style.display = 'none';
+                }
+            }
+            
+            // Also update the profile tab alert badge
+            const profileBadge = document.getElementById('profile-notif-badge');
+            const menuBadge = document.getElementById('menu-notif-badge');
+            const totalAlerts = (parseInt(menuBadge?.innerText) || 0) + Math.max(0, (parseInt(menuChatBadge?.innerText) || 0) - localUnread);
+            if (totalAlerts <= 0 && profileBadge) {
+                profileBadge.style.display = 'none';
+            }
+            
+            // Clear unread count locally
+            if (window.unreadMsgCounts) {
+                window.unreadMsgCounts[partnerId] = 0;
+                window.unreadMsgCounts[id] = 0;
+            }
+        }
+
         // Mark as read when entering chat
         if (realId) {
             markAsRead(realId);
@@ -3118,7 +4353,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const isCurrent = conv.id === activeChatId;
             const avatarHtml = prof.avatar_url 
-                ? `<img src="${prof.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` 
+                ? `<img src="${prof.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` 
                 : `<span style="font-size: 0.8rem; font-weight:800; color:#fff;">${(prof.full_name || prof.name || 'P')[0].toUpperCase()}</span>`;
             
             const activeStyle = isCurrent 
@@ -3142,18 +4377,51 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!user) return;
 
         try {
+            const isAdmin = isAdminUser(user);
+            const adminIdsSet = await getAdminIds();
+            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const adminIds = Array.from(adminIdsSet).filter(id => uuidPattern.test(id));
+
+            let msgQuery = supabaseClient.from('messages').update({ is_read: true });
+            
+            if (isAdmin) {
+                if (adminIds.length > 0) {
+                    msgQuery = msgQuery.in('receiver_id', adminIds);
+                } else {
+                    msgQuery = msgQuery.eq('receiver_id', user.id);
+                }
+                msgQuery = msgQuery.eq('sender_id', partnerId).eq('is_read', false);
+            } else if (partnerId === 'support' || adminIdsSet.has(partnerId)) {
+                // If standard user opening support, mark messages from ANY admin as read
+                if (adminIds.length > 0) {
+                    msgQuery = msgQuery.in('sender_id', adminIds);
+                } else {
+                    msgQuery = msgQuery.eq('sender_id', partnerId);
+                }
+                msgQuery = msgQuery.eq('receiver_id', user.id).eq('is_read', false);
+            } else {
+                msgQuery = msgQuery.eq('receiver_id', user.id).eq('sender_id', partnerId).eq('is_read', false);
+            }
+
+            let notifQuery = supabaseClient.from('notifications')
+                .update({ is_read: true })
+                .eq('user_id', user.id)
+                .eq('type', 'message')
+                .eq('is_read', false);
+
+            if (partnerId === 'support' || adminIdsSet.has(partnerId)) {
+                if (adminIds.length > 0) {
+                    notifQuery = notifQuery.in('sender_id', adminIds);
+                } else {
+                    notifQuery = notifQuery.eq('sender_id', partnerId);
+                }
+            } else {
+                notifQuery = notifQuery.eq('sender_id', partnerId);
+            }
+
             await Promise.all([
-                supabaseClient.from('messages')
-                    .update({ is_read: true })
-                    .eq('receiver_id', user.id)
-                    .eq('sender_id', partnerId)
-                    .eq('is_read', false),
-                supabaseClient.from('notifications')
-                    .update({ is_read: true })
-                    .eq('user_id', user.id)
-                    .eq('sender_id', partnerId)
-                    .eq('type', 'message')
-                    .eq('is_read', false)
+                msgQuery,
+                notifQuery
             ]);
         } catch (err) {
             console.error("Error marking messages/notifications as read:", err);
@@ -3172,11 +4440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!user) return;
 
         // Resolve if current user is ZeroZynapse ADM
-        let isZeroAdm = false;
-        const storedType = localStorage.getItem('user_type') || '';
-        isZeroAdm = storedType === 'admin' ||
-                    user.email?.toLowerCase().includes('admin@zerosynapses.com') || user.email?.toLowerCase().includes('lara.cabeleireira@teste.com') || 
-                    user.user_metadata?.full_name?.toLowerCase().includes('zerozynapse');
+        const isZeroAdm = isAdminUser(user);
 
         const targetId = await resolveTargetId(chatId);
         if (!targetId || targetId === 'SELF_ADMIN') {
@@ -3213,17 +4477,34 @@ document.addEventListener('DOMContentLoaded', () => {
         let dbError = null;
 
         try {
-            const result = await supabaseClient
-                    .from('messages')
-                    .select('*')
-                    .or(`and(sender_id.eq.${user.id},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${user.id})`)
-                    .order('created_at', { ascending: true });
+            const adminIdsSet = await getAdminIds();
+            const adminIdsArray = Array.from(adminIdsSet);
+
+            let query = supabaseClient.from('messages').select('*');
+            if (isZeroAdm) {
+                // Se for admin, busca qualquer mensagem que envolva o cliente (targetId)
+                query = query.or(`sender_id.eq.${targetId},receiver_id.eq.${targetId}`);
+            } else if (chatId === 'support') {
+                // Se for usuário comum abrindo suporte, busca qualquer mensagem entre ele e QUALQUER admin
+                query = query.or(`and(sender_id.eq.${user.id},receiver_id.in.(${adminIdsArray.join(',')})),and(sender_id.in.(${adminIdsArray.join(',')}),receiver_id.eq.${user.id})`);
+            } else {
+                // Se for usuário comum, busca apenas mensagens entre ele e o targetId
+                query = query.or(`and(sender_id.eq.${user.id},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${user.id})`);
+            }
+
+            const result = await query.order('created_at', { ascending: true });
 
             if (result.error) {
                 dbError = result.error;
                 throw result.error;
             }
-            messages = result.data || [];
+
+            if (isZeroAdm) {
+                // Filtra para garantir que a conversa seja de suporte (entre o cliente targetId e pelo menos um admin)
+                messages = (result.data || []).filter(m => adminIdsSet.has(m.sender_id) || adminIdsSet.has(m.receiver_id));
+            } else {
+                messages = result.data || [];
+            }
         } catch (err) {
             const isRLS = err.message?.includes('permission') || err.code === '42501' || err.code === 'PGRST301';
             
@@ -3303,12 +4584,30 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         const targetId = await resolveTargetId(chatId);
         if (!targetId) return;
 
+        const isZeroAdm = isAdminUser(user);
+
+        // Busca lista de admins dinamicamente uma única vez para uso no callback
+        const adminIds = await getAdminIds();
+
         window.currentChatSubscription = supabaseClient
             .channel(`chat-detail-${chatId}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
                 const msg = payload.new;
-                const isRelevant = (msg.sender_id === user.id && msg.receiver_id === targetId) || 
-                                   (msg.sender_id === targetId && msg.receiver_id === user.id);
+                
+                let isRelevant = false;
+                if (isZeroAdm) {
+                    // Admin: relevante se for do cliente para qualquer admin, ou de qualquer admin para o cliente
+                    isRelevant = (msg.sender_id === targetId && adminIds.has(msg.receiver_id)) ||
+                                 (adminIds.has(msg.sender_id) && msg.receiver_id === targetId);
+                } else if (chatId === 'support') {
+                    // Usuário comum abrindo suporte: relevante se for entre ele e qualquer admin
+                    isRelevant = (msg.sender_id === user.id && adminIds.has(msg.receiver_id)) ||
+                                 (adminIds.has(msg.sender_id) && msg.receiver_id === user.id);
+                } else {
+                    // Usuário comum: relevante se for entre ele e o targetId
+                    isRelevant = (msg.sender_id === user.id && msg.receiver_id === targetId) || 
+                                 (msg.sender_id === targetId && msg.receiver_id === user.id);
+                }
                 
                 if (isRelevant) {
                     // Skip if this message was already rendered by handleSendMessage
@@ -3317,6 +4616,11 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                         return;
                     }
                     renderSingleMessage(msg, user.id);
+                    
+                    // Mark as read in DB in real-time since we are actively viewing it!
+                    if (msg.sender_id === targetId) {
+                        markAsRead(targetId);
+                    }
                 }
             })
             .subscribe();
@@ -3668,7 +4972,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         if (!container) return;
         container.innerHTML = (DATA.professionals || []).filter(p => p.featured).map(p => {
             const avatarHtml = p.avatar_url 
-                ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` 
+                ? `<img src="${p.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;">` 
                 : `<span style="font-weight: 800;">${p.avatar || (p.full_name || p.name || 'P')[0].toUpperCase()}</span>`;
             
             return `
@@ -3695,7 +4999,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
         container.innerHTML = filtered.map(p => {
             const avatarHtml = p.avatar_url 
-                ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` 
+                ? `<img src="${p.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;">` 
                 : `<span style="font-weight: 800;">${p.avatar || (p.full_name || p.name || 'P')[0].toUpperCase()}</span>`;
 
             return `
@@ -3729,6 +5033,9 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         const chatList = document.getElementById('chat-list');
         if (!chatList || !supabaseClient) return;
 
+        // Fetch admin IDs Set dynamically to avoid ReferenceError
+        const adminIds = await getAdminIds();
+
         // Sempre garantir que a lista de conversas está visível e a busca está oculta
         const convsList = document.getElementById('chat-conversations-list');
         const searchResultsPanel = document.getElementById('chat-search-results');
@@ -3760,6 +5067,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
             // Cache-First profile values (Instant, offline-friendly)
             const cachedUserType = localStorage.getItem('user_type') || 'client';
+            const myType = cachedUserType;
             const cachedUserName = localStorage.getItem('user_name') || '';
             let myProfile = { user_type: cachedUserType, full_name: cachedUserName };
 
@@ -3789,25 +5097,20 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     .catch(err => console.warn("Background chat profile refresh skipped:", err));
             }
             
-            const myType = myProfile?.user_type || localStorage.getItem('user_type') || 'client';
-            const userEmail = user.email ? user.email.toLowerCase() : '';
-            const userMetaName = user.user_metadata?.full_name ? user.user_metadata.full_name.toLowerCase() : '';
-            const myName = myProfile?.full_name || '';
-
-            // Extreme Admin Detection
-            const isZeroAdm = userEmail.includes('admin@zerosynapses.com') || userEmail.includes('lara.cabeleireira@teste.com') || 
-                             userMetaName.includes('zero') || 
-                             userMetaName.includes('zynapse') || 
-                             myName.toLowerCase().includes('zero') ||
-                             myName.toLowerCase().includes('zynapse') ||
-                             myType === 'admin';
-
+            const isZeroAdm = isAdminUser(user);
             const isAdminLevel = isZeroAdm;
 
             if (isZeroAdm) {
                 localStorage.setItem('user_type', 'admin');
                 renderAdminChatDashboard(user, myProfile);
                 return;
+            }
+
+            // Centraliza o texto "Mensagens" quando for Cliente ou Profissional
+            const chatHeaderH3 = document.querySelector('#chat .screen-header h3');
+            if (chatHeaderH3) {
+                chatHeaderH3.style.width = '100%';
+                chatHeaderH3.style.textAlign = 'center';
             }
 
             // Show filters if admin
@@ -3857,6 +5160,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             }
 
             let filteredChats = [];
+            let partnersMap = new Map();
 
             if (isOfflineFallback) {
                 // Get the accessed account's specific local history!
@@ -3919,7 +5223,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     };
                 });
             } else {
-                const partnersMap = new Map();
+                partnersMap = new Map();
                 messages.forEach(m => {
                     const partnerId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
                     // Strict validation: make sure the partner ID is a valid non-null string and is a UUID
@@ -3944,8 +5248,21 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
                 // Define online support header with dynamic unread badge and last message!
                 if (!isZeroAdm) {
-                    const adminId = _cachedAdminId || 'e33bdd17-f6bc-4c72-82cf-c3f76124aca0';
-                    const supportUnread = partnersMap.has(adminId) ? (partnersMap.get(adminId).unreadCount || 0) : 0;
+                    let supportUnread = 0;
+                    let supportLastMessage = 'Como podemos ajudar você hoje?';
+                    let supportTimestamp = 0;
+
+                    adminIds.forEach(adminId => {
+                        if (partnersMap.has(adminId)) {
+                            const info = partnersMap.get(adminId);
+                            supportUnread += info.unreadCount || 0;
+                            if (info.timestamp > supportTimestamp) {
+                                supportLastMessage = info.lastMessage;
+                                supportTimestamp = info.timestamp;
+                            }
+                        }
+                    });
+
                     const supportBadge = supportUnread ? `
                         <div class="chat-unread-badge" style="
                             background: var(--primary-accent);
@@ -3982,7 +5299,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                                     </span>
                                 </div>
                                 <div class="last-msg" style="font-size: 0.85rem; color: #bbb; margin-top: 4px; font-weight: 500; line-height: 1.3;">
-                                    ${partnersMap.has(adminId) ? partnersMap.get(adminId).lastMessage : 'Como podemos ajudar você hoje?'}
+                                    ${supportLastMessage}
                                 </div>
                             </div>
                             ${supportBadge}
@@ -4068,10 +5385,29 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 });
             }
 
+            // Populate unread count cache locally
+            window.unreadMsgCounts = window.unreadMsgCounts || {};
+            if (filteredChats) {
+                filteredChats.forEach(chat => {
+                    window.unreadMsgCounts[chat.id] = chat.unreadCount || 0;
+                });
+            }
+            
+            let supportUnread = 0;
+            adminIds.forEach(adminId => {
+                if (partnersMap.has(adminId)) {
+                    supportUnread += partnersMap.get(adminId).unreadCount || 0;
+                }
+            });
+            window.unreadMsgCounts['support'] = supportUnread;
+            adminIds.forEach(adminId => {
+                window.unreadMsgCounts[adminId] = supportUnread;
+            });
+
             // 6. Render List
             chatList.innerHTML = supportItemHtml + filteredChats.map(chat => {
                 const avatarHtml = chat.avatar_url 
-                    ? `<img src="${chat.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` 
+                    ? `<img src="${chat.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;">` 
                     : (chat.full_name || 'U')[0].toUpperCase();
                 
                 const badgeHtml = chat.unreadCount ? `
@@ -4131,14 +5467,28 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         
         if (adminFilters) adminFilters.style.display = 'flex';
 
+        // Centraliza o texto "Mensagens" quando for ADM
+        const chatHeaderH3 = document.querySelector('#chat .screen-header h3');
+        if (chatHeaderH3) {
+            chatHeaderH3.style.width = '100%';
+            chatHeaderH3.style.textAlign = 'center';
+        }
+
         try {
-            // 1. Busca TODAS as mensagens da plataforma (permitido pela nova RLS de admin)
+            // 1. Busca todos os IDs de admins no banco para saber quem pertence ao "lado suporte"
+            const adminIds = await getAdminIds();
+            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const adminIdsArray = Array.from(adminIds).filter(id => uuidPattern.test(id));
+
+            // 2. Busca apenas mensagens de suporte envolvendo os admins com limite de 1500 (Otimizado)
             const result = await Promise.race([
                 supabaseClient
                     .from('messages')
                     .select('*')
-                    .order('created_at', { ascending: false }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 30000))
+                    .or(`sender_id.in.(${adminIdsArray.join(',')}),receiver_id.in.(${adminIdsArray.join(',')})`)
+                    .order('created_at', { ascending: false })
+                    .limit(1500),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000))
             ]);
             
             let msgError = result.error;
@@ -4160,29 +5510,51 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 }
             }
 
-            // 2. Agrupa por "Conversa" — todos os IDs únicos que interagiram na plataforma
             const partnersMap = new Map();
-            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
             (messages || []).forEach(m => {
-                // Identifica o usuário não-admin da conversa
-                const isAdminSender = m.sender_id === user.id;
-                const isAdminReceiver = m.receiver_id === user.id;
-                const partnerId = isAdminSender ? m.receiver_id : m.sender_id;
-
-                if (partnerId && partnerId !== 'null' && partnerId !== 'undefined' && uuidPattern.test(partnerId) && partnerId !== user.id) {
-                    if (!partnersMap.has(partnerId)) {
-                        partnersMap.set(partnerId, {
-                            lastMessage: m.content,
-                            time: new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                            timestamp: new Date(m.created_at).getTime(),
-                            unread: !m.is_read && isAdminReceiver,
-                            unreadCount: 0
-                        });
+                const isSenderAdmin = adminIds.has(m.sender_id);
+                const isReceiverAdmin = adminIds.has(m.receiver_id);
+                
+                // Conversa entre um Admin (qualquer) e um Cliente (não-admin)
+                // O "parceiro" da conversa exibido no dashboard admin é o Cliente
+                if (isSenderAdmin && !isReceiverAdmin) {
+                    const partnerId = m.receiver_id;
+                    if (partnerId && partnerId !== 'null' && uuidPattern.test(partnerId)) {
+                        if (!partnersMap.has(partnerId)) {
+                            partnersMap.set(partnerId, {
+                                lastMessage: m.content,
+                                time: new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                                timestamp: new Date(m.created_at).getTime(),
+                                unread: false,
+                                unreadCount: 0
+                            });
+                        }
                     }
-
-                    if (m.receiver_id === user.id && m.is_read === false) {
-                        partnersMap.get(partnerId).unreadCount++;
+                } else if (!isSenderAdmin && isReceiverAdmin) {
+                    const partnerId = m.sender_id;
+                    if (partnerId && partnerId !== 'null' && uuidPattern.test(partnerId)) {
+                        if (!partnersMap.has(partnerId)) {
+                            partnersMap.set(partnerId, {
+                                lastMessage: m.content,
+                                time: new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                                timestamp: new Date(m.created_at).getTime(),
+                                unread: !m.is_read,
+                                unreadCount: !m.is_read ? 1 : 0
+                            });
+                        } else {
+                            const existing = partnersMap.get(partnerId);
+                            const msgTs = new Date(m.created_at).getTime();
+                            if (msgTs > existing.timestamp) {
+                                existing.lastMessage = m.content;
+                                existing.time = new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                                existing.timestamp = msgTs;
+                            }
+                            if (!m.is_read) {
+                                existing.unread = true;
+                                existing.unreadCount++;
+                            }
+                        }
                     }
                 }
             });
@@ -4242,9 +5614,17 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     </div>
                 `;
             } else {
+                // Populate unread count cache locally
+                window.unreadMsgCounts = window.unreadMsgCounts || {};
+                if (filteredChats) {
+                    filteredChats.forEach(chat => {
+                        window.unreadMsgCounts[chat.id] = chat.unreadCount || 0;
+                    });
+                }
+
                 html += filteredChats.map(chat => {
                     const avatarHtml = chat.avatar_url 
-                        ? `<img src="${chat.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` 
+                        ? `<img src="${chat.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;">` 
                         : (chat.full_name || 'U')[0].toUpperCase();
                     
                     const typeLabel = chat.user_type === 'professional' ? 'PROFISSIONAL' : 'CLIENTE';
@@ -4445,7 +5825,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 searchList.innerHTML = merged.map(item => {
                     const sub = item.type === 'professional' ? (item.specialty || 'Profissional') : 'Cliente';
                     const avatar = item.avatar_url 
-                        ? `<img src="${item.avatar_url}" style="width:100%; height:100%; object-fit:cover;">` 
+                        ? `<img src="${item.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;">` 
                         : `<span style="font-weight: 800;">${(item.name || 'U')[0].toUpperCase()}</span>`;
                     
                     const labelBadge = item.isDb 
@@ -4840,15 +6220,24 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         let services = [];
         if (window.allProfessionalsCache && window.allProfessionalsCache.length > 0) {
             services = window.allProfessionalsCache
-                .filter(p => p.specialty && p.user_type === 'professional')
+                .filter(p => p.user_type === 'professional')
                 .map(p => {
-                    const priceVal = p.price_range || p.price || 45.0;
+                    const nameVal = p.specialty || (p.services && p.services.length > 0 ? p.services[0].name : null);
+                    if (!nameVal) return null;
+                    
+                    let priceVal = p.price_range || p.price;
+                    if (!priceVal && p.services && p.services.length > 0) {
+                        priceVal = p.services[0].price;
+                    }
+                    if (!priceVal) priceVal = 45.0;
+
                     return {
-                        name: p.specialty,
+                        name: nameVal,
                         price: Number(priceVal).toFixed(2).replace('.', ','),
                         profId: p.id
                     };
-                });
+                })
+                .filter(s => s !== null);
         }
 
         // Deduplicate services by name
@@ -4870,19 +6259,26 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
 
         let currentIndex = 0;
         
+        // Helper to securely update the interactive navigation handler
+        const updateClickBehavior = () => {
+            if (guideEl) {
+                const currentService = services[currentIndex];
+                if (currentService && currentService.profId) {
+                    guideEl.onclick = () => {
+                        location.hash = `#profissional-home/${currentService.profId}`;
+                    };
+                    guideEl.style.cursor = 'pointer';
+                } else {
+                    guideEl.onclick = null;
+                    guideEl.style.cursor = 'default';
+                }
+            }
+        };
+
         // Render first immediately
         valEl.innerText = services[currentIndex].name;
         if (priceEl) priceEl.innerText = `R$ ${services[currentIndex].price}`;
-
-        // Set click behavior
-        if (guideEl) {
-            guideEl.onclick = () => {
-                const currentService = services[currentIndex];
-                if (currentService && currentService.profId) {
-                    location.hash = `#profissional/${currentService.profId}`;
-                }
-            };
-        }
+        updateClickBehavior();
 
         if (servicesRotationInterval) clearInterval(servicesRotationInterval);
 
@@ -4900,6 +6296,9 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                 valEl.innerText = services[currentIndex].name;
                 if (priceEl) priceEl.innerText = `R$ ${services[currentIndex].price}`;
                 
+                // Refresh interactive click route
+                updateClickBehavior();
+                
                 // Smooth fade in
                 valEl.style.opacity = '1';
                 valEl.style.transform = 'translateY(0)';
@@ -4908,7 +6307,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     priceEl.style.transform = 'translateY(0)';
                 }
             }, 500); // Wait for fade out animation
-        }, 3000); // Rotate every 3 seconds
+        }, 5000); // Rotate every 5 seconds (demorar 5 segundos)
     }
 
     function renderRecentProfessionals() {
@@ -4916,7 +6315,15 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         const recentList = document.getElementById('recent-professionals-list');
         if (!recentContainer || !recentList || !window.allProfessionalsCache) return;
 
-        const recents = window.allProfessionalsCache.slice(0, 3);
+        const myType = localStorage.getItem('user_type') || 'client';
+        let filteredCache = window.allProfessionalsCache;
+        if (myType === 'client') {
+            filteredCache = window.allProfessionalsCache.filter(p => p.user_type === 'professional');
+        } else if (myType === 'professional') {
+            filteredCache = window.allProfessionalsCache.filter(p => p.user_type === 'client');
+        }
+
+        const recents = filteredCache.slice(0, 3);
 
         if (recents.length > 0) {
             recentContainer.style.display = 'block';
@@ -4924,11 +6331,14 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             if (toggleBtn) toggleBtn.style.display = 'flex';
             recentList.innerHTML = recents.map(p => {
                 const avatarHtml = p.avatar_url 
-                    ? `<img src="${p.avatar_url}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+                    ? `<img src="${p.avatar_url}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
                     : `<div style="width:100%; height:100%; background:linear-gradient(135deg, #1a1a1a, #000); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.1rem; border-radius:50%; border: 1px solid #333;">${(p.full_name || p.name || 'P')[0].toUpperCase()}</div>`;
                 
+                const isProf = p.user_type === 'professional';
+                const hashPath = isProf ? `#profissional-home/${p.id}` : `#client-home/${p.id}`;
+                
                 return `
-                <div class="prof-card" style="min-width: 110px; max-width: 110px; background: #111; border: 1px solid #222; padding: 0.55rem 0.5rem; border-radius: 12px; text-align: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.4);" onclick="location.hash='#profissional/${p.id}'">
+                <div class="prof-card" style="min-width: 110px; max-width: 110px; background: #111; border: 1px solid #222; padding: 0.55rem 0.5rem; border-radius: 12px; text-align: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.4);" onclick="location.hash='${hashPath}'">
                     <div style="width:38px; height:38px; margin: 0 auto 0.35rem;">
                         ${avatarHtml}
                     </div>
@@ -4988,10 +6398,10 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             }
         }
 
-        // Show the temporary floating guide
+        // Show the temporary floating guide and shift to the right by 5% of screen width (5vw)
         if (badgeEl) {
             badgeEl.style.opacity = '1';
-            badgeEl.style.transform = 'translate(-50%, -50%) scale(1)';
+            badgeEl.style.transform = 'translate(calc(-50% + 5vw), -50%) scale(1)';
             
             // Clear any existing float-out timeout
             if (searchSortTimeout) clearTimeout(searchSortTimeout);
@@ -4999,7 +6409,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             // Hide/float out after 2 seconds
             searchSortTimeout = setTimeout(() => {
                 badgeEl.style.opacity = '0';
-                badgeEl.style.transform = 'translate(-50%, -140%) scale(0.85)';
+                badgeEl.style.transform = 'translate(calc(-50% + 5vw), -140%) scale(0.85)';
             }, 2000);
         }
 
@@ -5031,7 +6441,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         if (isShowingRecent) {
             drawer.style.maxHeight = '0px';
             drawer.style.opacity = '0';
-            drawer.style.transform = 'translateY(25px)';
+            drawer.style.transform = 'translateY(-15px)';
             
             arrowRecent.style.transform = 'rotate(0deg)';
             btnRecent.style.background = '#000000';
@@ -5075,8 +6485,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
     const defaultMockProducts = [
         {
             id: 'mock-p1',
-            professional_id: 'mock-pro-id-joao',
-            professional_name: 'João Silva',
+            professional_id: 'prof-101',
+            professional_name: 'Marcos Silva',
             name: 'Pomada Modeladora Matte Pro',
             description: 'Fixação extra forte com acabamento 100% opaco e seco para modelar com alta durabilidade.',
             price: 49.90,
@@ -5084,8 +6494,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         },
         {
             id: 'mock-p2',
-            professional_id: 'mock-pro-id-joao',
-            professional_name: 'João Silva',
+            professional_id: 'prof-101',
+            professional_name: 'Marcos Silva',
             name: 'Óleo Nutritivo para Barba Premium',
             description: 'Composto por óleos essenciais de argan e coco que amaciam, perfumam e hidratam profundamente.',
             price: 39.90,
@@ -5093,8 +6503,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         },
         {
             id: 'mock-p3',
-            professional_id: 'mock-pro-id-carlos',
-            professional_name: 'Carlos Barber',
+            professional_id: 'prof-102',
+            professional_name: 'Ricardo Barber',
             name: 'Shampoo Purificante Fresh Mentol',
             description: 'Sensação refrescante imediata, remove a oleosidade excessiva e previne a caspa.',
             price: 34.90,
@@ -5102,8 +6512,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         },
         {
             id: 'mock-p4',
-            professional_id: 'mock-pro-id-joao',
-            professional_name: 'João Silva',
+            professional_id: 'prof-101',
+            professional_name: 'Marcos Silva',
             name: 'Gel Cola Estilização Extra Forte',
             description: 'Brilho molhado com mega fixação de longa duração para penteados estruturados e modernos.',
             price: 22.00,
@@ -5111,8 +6521,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         },
         {
             id: 'mock-p5',
-            professional_id: 'mock-pro-id-carlos',
-            professional_name: 'Carlos Barber',
+            professional_id: 'prof-102',
+            professional_name: 'Ricardo Barber',
             name: 'Creme de Barbear Hidratante Suave',
             description: 'Fórmula enriquecida com extrato de camomila e aloe vera que desliza fácil e reduz a vermelhidão.',
             price: 29.90,
@@ -5120,8 +6530,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         },
         {
             id: 'mock-p6',
-            professional_id: 'mock-pro-id-carlos',
-            professional_name: 'Carlos Barber',
+            professional_id: 'prof-102',
+            professional_name: 'Ricardo Barber',
             name: 'Tônico Capilar Crescimento Acelerado',
             description: 'Ativa a circulação do bulbo capilar, nutre a raiz e estimula o nascimento de fios mais fortes.',
             price: 65.00,
@@ -5129,14 +6539,16 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         },
         {
             id: 'mock-p7',
-            professional_id: 'mock-pro-id-carlos',
-            professional_name: 'Carlos Barber',
+            professional_id: 'prof-102',
+            professional_name: 'Ricardo Barber',
             name: 'Pente Profissional Anti-Frizz Madeira',
             description: 'Feito de madeira de lei selecionada. Dentes arredondados que desembaraçam sem agredir a pele.',
             price: 19.90,
             image_url: 'https://images.unsplash.com/photo-1590156546746-c23305398e13?w=150&auto=format&fit=crop'
         }
     ];
+
+    window.defaultMockProducts = defaultMockProducts;
 
     window.toggleProductsDrawer = function() {
         const drawer = document.getElementById('shared-drawer-container');
@@ -5159,7 +6571,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         if (isShowingProducts) {
             drawer.style.maxHeight = '0px';
             drawer.style.opacity = '0';
-            drawer.style.transform = 'translateY(25px)';
+            drawer.style.transform = 'translateY(-15px)';
             
             arrowProducts.style.transform = 'rotate(0deg)';
             btnProducts.style.background = '#000000';
@@ -5413,7 +6825,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         }
 
         listContainer.innerHTML = uniqueProducts.map(p => `
-            <div class="product-card-glass" style="flex: 0 0 160px; scroll-snap-align: start; background: rgba(255,255,255,0.02); border: 1px solid rgba(168, 85, 247, 0.1); border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.3s ease;">
+            <div class="product-card-glass" style="flex: 0 0 160px; scroll-snap-align: start; background: rgba(255,255,255,0.02); border: 1px solid rgba(168, 85, 247, 0.1); border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.3s ease; cursor: pointer;" onclick="location.hash='#profissional-home/${p.professional_id}'">
                 <div style="position: relative; width: 100%; height: 110px; border-radius: 12px; overflow: hidden; background: rgba(0,0,0,0.2);">
                     <img src="${p.image_url}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='https://images.unsplash.com/photo-1621607511815-684b45512257?w=150&auto=format&fit=crop'">
                     <span style="position: absolute; top: 6px; right: 6px; background: rgba(168, 85, 247, 0.95); color: #fff; font-size: 0.55rem; font-weight: 900; padding: 2px 6px; border-radius: 50px; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">Plus</span>
@@ -5550,7 +6962,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                         <div style="font-weight:800; font-size:0.95rem; color: #fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.full_name || 'Usuário'}</div>
                     </div>
                     <div style="font-size:0.7rem; color:#888; font-weight: 600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top: 2px;">
-                        <span style="color: ${isProf ? 'var(--primary-accent)' : '#aaa'};">${categorySymbol} ${isProf ? (p.category || 'Profissional') : 'Cliente'}</span> ${isProf ? '• ★ ' + (p.rating || '5.0') : ''}
+                        <span class="search-category-text" style="color: ${isProf ? 'var(--primary-accent)' : '#aaa'};">${categorySymbol} ${isProf ? (p.category || 'Profissional') : 'Cliente'}</span> ${isProf ? '• ★ ' + (p.rating || '5.0') : ''}
                     </div>
                     
                     ${mainService ? `
@@ -6071,11 +7483,38 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             .eq('is_read', false);
 
         // Fetch unread messages count
-        const { count: msgCount, error: msgError } = await supabaseClient
-            .from('messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('receiver_id', user.id)
-            .eq('is_read', false);
+        let msgCount = 0;
+        let msgError = null;
+        try {
+            const isAdmin = isAdminUser(user);
+            if (isAdmin) {
+                // Admin: count ALL unread messages addressed to any admin (support inbox)
+                // First get all admin IDs
+                const adminIdsSet = await getAdminIds();
+                const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const adminIds = Array.from(adminIdsSet).filter(id => uuidPattern.test(id));
+                if (adminIds.length > 0) {
+                    const { count: adminMsgCount, error: adminMsgErr } = await supabaseClient
+                        .from('messages')
+                        .select('*', { count: 'exact', head: true })
+                        .in('receiver_id', adminIds)
+                        .eq('is_read', false);
+                    msgCount = adminMsgCount || 0;
+                    msgError = adminMsgErr;
+                }
+            } else {
+                // Regular user: count own unread messages
+                const { count: userMsgCount, error: userMsgErr } = await supabaseClient
+                    .from('messages')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('receiver_id', user.id)
+                    .eq('is_read', false);
+                msgCount = userMsgCount || 0;
+                msgError = userMsgErr;
+            }
+        } catch (err) {
+            console.warn('Error counting unread messages:', err);
+        }
 
         const profileBadge = document.getElementById('profile-notif-badge');
         const menuBadge = document.getElementById('menu-notif-badge');
@@ -6094,8 +7533,8 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
             if (menuBadge) menuBadge.style.display = 'none';
         }
 
-        // Update menu chat badge (messages count)
-        if (activeMessages > 0) {
+        // Update menu chat badge (messages count) - hidden if actively viewing the Chat list screen
+        if (activeMessages > 0 && window.location.hash !== '#chat') {
             if (menuChatBadge) {
                 menuChatBadge.style.display = 'block';
                 menuChatBadge.innerText = activeMessages > 9 ? '9+' : activeMessages;
@@ -6105,7 +7544,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
         }
 
         // Top tab profile badge lights up if EITHER unread notifications OR unread messages exist
-        const totalAlerts = activeNotifs + activeMessages;
+        const totalAlerts = activeNotifs + (window.location.hash === '#chat' ? 0 : activeMessages);
         if (totalAlerts > 0) {
             if (profileBadge) profileBadge.style.display = 'block';
         } else {
@@ -6655,7 +8094,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     const category = favProfObj?.category || 'Profissional';
                     preferidosList.innerHTML = `
                         <div style="background:#111; padding:1.25rem; border-radius:16px; border:1px solid #222; display: flex; align-items: center; gap: 12px; margin-bottom: 1rem; width: 100%;">
-                            <div style="width:45px; height:45px; background:rgba(168, 85, 247, 0.1); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; color:#a855f7;">💼</div>
+                            <div style="width:45px; height:45px; background:rgba(255, 255, 255, 0.08); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; filter:grayscale(1); opacity:0.85;">💼</div>
                             <div style="flex:1;">
                                 <div style="font-weight: 800; color: #fff; font-size: 1.05rem;">${favItem}</div>
                                 <div style="font-size: 0.75rem; color: #888; font-weight: 600; margin-top: 2px;">${category} • ${maxCount} agendamentos</div>
@@ -6691,13 +8130,18 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                     const serviceName = a.service_name || 'Serviço';
                     const priceVal = a.price ? Number(a.price).toFixed(2).replace('.', ',') : '45,00';
                     
+                    const isLightTheme = document.documentElement.classList.contains('light-theme');
                     let statusBadge = '';
                     if (a.status === 'confirmed') {
-                        statusBadge = '<span style="background: rgba(16, 185, 129, 0.1); color: #10B981; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; border: 1px solid rgba(16, 185, 129, 0.2); margin-top: 4px; display: inline-block;">CONFIRMADO</span>';
+                        if (isLightTheme) {
+                            statusBadge = '<span style="background: rgba(168, 85, 247, 0.1); color: #a855f7; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; border: 1px solid rgba(168, 85, 247, 0.2); margin-top: 4px; display: inline-block;">CONFIRMADO</span>';
+                        } else {
+                            statusBadge = '<span style="background: rgba(168, 85, 247, 0.1); color: #a855f7; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; border: 1px solid rgba(168, 85, 247, 0.2); margin-top: 4px; display: inline-block;">CONFIRMADO</span>';
+                        }
                     } else if (a.status === 'pending') {
-                        statusBadge = '<span style="background: rgba(245, 158, 11, 0.1); color: #F59E0B; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; border: 1px solid rgba(245, 158, 11, 0.2); margin-top: 4px; display: inline-block;">PENDENTE</span>';
+                        statusBadge = '<span style="background: rgba(251, 191, 36, 0.1); color: #FBBF24; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; border: 1px solid rgba(251, 191, 36, 0.2); margin-top: 4px; display: inline-block;">PENDENTE</span>';
                     } else {
-                        statusBadge = '<span style="background: rgba(239, 68, 68, 0.1); color: #EF4444; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; border: 1px solid rgba(239, 68, 68, 0.2); margin-top: 4px; display: inline-block;">CANCELADO</span>';
+                        statusBadge = '<span style="background: rgba(255, 255, 255, 0.08); color: #9CA3AF; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 800; border: 1px solid rgba(255, 255, 255, 0.15); margin-top: 4px; display: inline-block;">CANCELADO</span>';
                     }
 
                     return `
@@ -6707,7 +8151,7 @@ CREATE POLICY "msg_upd" ON public.messages FOR UPDATE USING (true);
                                 <div style="font-size: 0.75rem; color: #888; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${serviceName} • ${dateBr} às ${a.time}</div>
                                 ${statusBadge}
                             </div>
-                            <div style="font-size: 1.15rem; font-weight: 900; color: #10B981; margin-left: 10px; flex-shrink: 0;">
+                            <div style="font-size: 1.15rem; font-weight: 900; color: #FBBF24; margin-left: 10px; flex-shrink: 0;">
                                 R$ ${priceVal}
                             </div>
                         </div>
@@ -6888,6 +8332,19 @@ window.setupCustomProfDropdown = function(profsData, clientCity) {
     } else {
         searchInput.value = '';
         searchInput.style.fontSize = '0.85rem';
+    }
+
+    // Auto-select professional if selected_prof_id is set in localStorage
+    const autoProfId = localStorage.getItem('selected_prof_id');
+    if (autoProfId) {
+        const matched = (profsData || []).find(p => p.id === autoProfId);
+        if (matched) {
+            localStorage.removeItem('selected_prof_id');
+            localStorage.removeItem('selected_prof_name'); // Clean up any other leftovers
+            setTimeout(() => {
+                selectProfessional(matched.id, matched.full_name);
+            }, 100);
+        }
     }
 };
 
@@ -7137,7 +8594,7 @@ window.renderAgendamentoScreen = async function() {
         todayLocal.setHours(0, 0, 0, 0);
         
         container.innerHTML = `
-            <div style="flex: 1; display: flex; flex-direction: column;">
+            <div style="flex: 1; display: flex; flex-direction: column; margin-top: 10vh;">
                 <h4 style="margin: 0 0 1rem 0; color: #fff; font-size: 1.1rem; text-align: center;">Agenda de Cortes Marcados</h4>
                 <div id="prof-appointments-list" style="display: flex; flex-direction: column; gap: 10px;">
                     <div style="text-align:center; padding: 2rem;"><span class="loader-mini"></span></div>
@@ -7161,9 +8618,10 @@ window.renderAgendamentoScreen = async function() {
             // Próximos agendamentos (de hoje em diante)
             const { data: upcomingApps } = await supabaseClient
                 .from('appointments')
-                .select('*, client:client_id(full_name, avatar_url)')
+                .select('*, client:client_id(full_name, avatar_url, rating)')
                 .eq('professional_id', user.id)
                 .gte('date', todayStr)
+                .neq('status', 'cancelled')
                 .order('date', { ascending: true })
                 .order('time', { ascending: true });
 
@@ -7176,29 +8634,43 @@ window.renderAgendamentoScreen = async function() {
                     const date = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : a.date;
                     const time = a.time;
                     const clientName = a.client?.full_name || 'Cliente';
+                    const clientRating = a.client?.rating ? Number(a.client.rating).toFixed(1) : '4.7';
+                    const ratingColor = clientRating >= 4.5 ? '#10B981' : clientRating >= 4.0 ? '#F59E0B' : '#EF4444';
+                    const isCompleted = a.status === 'completed';
+                    const isNoShow = a.status === 'no_show';
+
                     let statusBadge = '';
-                    if (a.status === 'pending') {
-                        statusBadge = '<span style="background: rgba(59, 130, 246, 0.1); color: #3B82F6; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; border: 1px solid rgba(59, 130, 246, 0.3); margin-top: 6px; display: inline-block;">⏳ PRONTO</span>';
-                    } else if (a.status === 'confirmed') {
-                        statusBadge = '<span style="background: rgba(16, 185, 129, 0.1); color: #10B981; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; border: 1px solid rgba(16, 185, 129, 0.3); margin-top: 6px; display: inline-block;">✓ CONFIRMADO</span>';
-                    } else {
-                        statusBadge = '<span style="background: rgba(239, 68, 68, 0.1); color: #EF4444; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; border: 1px solid rgba(239, 68, 68, 0.3); margin-top: 6px; display: inline-block;">CANCELADO</span>';
-                    }
+                    if (a.status === 'pending') statusBadge = `<span style="background:rgba(59,130,246,0.1);color:#3B82F6;padding:3px 8px;border-radius:4px;font-size:0.65rem;font-weight:800;border:1px solid rgba(59,130,246,0.3);">⏳ AGUARDANDO</span>`;
+                    else if (a.status === 'confirmed') statusBadge = `<span style="background:rgba(16,185,129,0.1);color:#10B981;padding:3px 8px;border-radius:4px;font-size:0.65rem;font-weight:800;border:1px solid rgba(16,185,129,0.3);">✓ CONFIRMADO</span>`;
+                    else if (isCompleted) statusBadge = `<span style="background:rgba(16,185,129,0.15);color:#10B981;padding:3px 8px;border-radius:4px;font-size:0.65rem;font-weight:800;">✓ CONCLUÍDO</span>`;
+                    else if (isNoShow) statusBadge = `<span style="background:rgba(239,68,68,0.1);color:#EF4444;padding:3px 8px;border-radius:4px;font-size:0.65rem;font-weight:800;">✗ NÃO COMPARECEU</span>`;
+
+                    const showActions = !isCompleted && !isNoShow;
 
                     return `
-                    <div style="background:#111; padding:1.25rem; border-radius:16px; border:1px solid #222; display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <div style="color:#a855f7; font-size:0.7rem; font-weight:800; letter-spacing:1px; margin-bottom:4px;">CLIENTE</div>
-                            <div style="font-weight:800; color:#fff; font-size:1.05rem;">${clientName}</div>
-                            <div style="font-size:0.8rem; color:#888; margin-top: 2px; font-weight:500;">${date}</div>
-                            ${statusBadge}
+                    <div style="background:#111; padding:1.25rem; border-radius:16px; border:1px solid #222;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="color:#a855f7; font-size:0.65rem; font-weight:800; letter-spacing:1px; margin-bottom:4px;">CLIENTE</div>
+                                <div style="font-weight:800; color:#fff; font-size:1rem;">${clientName}</div>
+                                <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+                                    <span style="font-size:0.8rem;color:${ratingColor};font-weight:800;">★ ${clientRating}</span>
+                                    <span style="font-size:0.75rem;color:#666;">· ${date}</span>
+                                </div>
+                                <div style="margin-top:6px;">${statusBadge}</div>
+                            </div>
+                            <div style="background:#000;border:1px solid #333;padding:8px 14px;border-radius:12px;font-weight:900;color:#fff;font-size:1.1rem;flex-shrink:0;">${time}</div>
                         </div>
-                        <div style="background:#000; border:1px solid #333; padding:8px 16px; border-radius:12px; font-weight:900; color:#10B981; font-size: 1.1rem; flex-shrink: 0;">
-                            ${time}
-                        </div>
+                        ${showActions ? `
+                        <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid #1a1a1a;padding-top:12px;">
+                            <button onclick="window.completeAppointment('${a.id}','${a.client_id}')" style="flex:1;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#10B981;border-radius:10px;padding:8px;font-size:0.75rem;font-weight:800;cursor:pointer;">✓ Concluir</button>
+                            <button onclick="window.cancelAppointment('${a.id}','${a.date}','${a.time}','${a.client_id}','professional')" style="flex:1;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#EF4444;border-radius:10px;padding:8px;font-size:0.75rem;font-weight:800;cursor:pointer;">✕ Cancelar</button>
+                            <button onclick="window.reportNoShow('${a.id}','${a.client_id}')" style="flex:1;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#F59E0B;border-radius:10px;padding:8px;font-size:0.75rem;font-weight:800;cursor:pointer;">👻 Não veio</button>
+                        </div>` : ''}
                     </div>`;
                 }).join('');
             }
+
 
             // Histórico (antes de hoje)
             const { data: historyApps } = await supabaseClient
@@ -7432,18 +8904,34 @@ window.renderAgendamentoScreen = async function() {
                 const date = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : a.date;
                 const time = a.time;
                 const profName = a.professional?.full_name || 'Profissional';
+                const isCancelled = a.status === 'cancelled';
+                const isCompleted = a.status === 'completed';
+                const canCancel = !isCancelled && !isCompleted;
+
+                const statusBadge = isCancelled
+                    ? `<span style="color:#FBBF24;font-size:0.7rem;font-weight:800;">✕ CANCELADO</span>`
+                    : isCompleted
+                    ? `<span style="color:#10B981;font-size:0.7rem;font-weight:800;">✓ CONCLUÍDO</span>`
+                    : `<span style="color:#FBBF24;font-size:0.7rem;font-weight:800;">⏳ AGENDADO</span>`;
+
                 return `
-                <div style="background:#111; padding:1.25rem; border-radius:16px; border:1px solid #222; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
+                <div style="background:#111; padding:1.25rem; border-radius:16px; border:1px solid ${isCancelled ? '#2a1111' : '#222'}; display:flex; justify-content:space-between; align-items:center; gap:10px; opacity:${isCancelled ? '0.6' : '1'};">
+                    <div style="min-width:0;flex:1;">
                         <div style="color:#a855f7; font-size:0.7rem; font-weight:800; letter-spacing:1px; margin-bottom:4px;">PROFISSIONAL</div>
-                        <div style="font-weight:800; color:#fff; font-size:1.05rem;">${profName}</div>
-                        <div style="font-size:0.8rem; color:#888; margin-top: 2px; font-weight:500;">${date}</div>
+                        <div style="font-weight:800; color:#fff; font-size:1.05rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${profName}</div>
+                        <div style="font-size:0.8rem; color:#888; margin-top:2px; font-weight:500;">${date} · ${time}</div>
+                        <div style="margin-top:6px;">${statusBadge}</div>
                     </div>
-                    <div style="background:#000; border:1px solid #333; padding:8px 16px; border-radius:12px; font-weight:900; color:#10B981; font-size: 1.1rem; flex-shrink: 0;">
-                        ${time}
+                    <div style="display:flex;flex-direction:column;align-items:stretch;gap:8px;flex-shrink:0;">
+                        <div style="background:#000; border:1px solid #333; padding:8px 14px; border-radius:12px; font-weight:900; color:#fff; font-size:1.1rem; text-align:center;">${time}</div>
+                        <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
+                            ${a.professional_id ? `<button onclick="location.hash='#chat-msg/${a.professional_id}'" style="background:#a855f7;border:none;color:#ffffff;border-radius:10px;padding:6px 12px;font-size:0.72rem;font-weight:800;cursor:pointer;letter-spacing:0.5px;text-align:center;">💬 Chat</button>` : ''}
+                            ${canCancel ? `<button onclick="window.cancelAppointment('${a.id}','${a.date}','${a.time}','${a.professional_id || ''}','client')" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#ffffff;border-radius:10px;padding:6px 12px;font-size:0.72rem;font-weight:800;cursor:pointer;letter-spacing:0.5px;text-align:center;">✕ Cancelar</button>` : ''}
+                        </div>
                     </div>
                 </div>`;
             }).join('');
+
         };
         loadClientAgenda();
         setupBookingHandlers(false);
@@ -7691,11 +9179,13 @@ window.renderAgendamentoScreen = async function() {
                                     c.style.background = '#000';
                                     c.style.color = '#fff';
                                     c.style.borderColor = '#333';
+                                    c.classList.remove('selected-slot');
                                 }
                             });
                             btn.style.background = 'rgba(176, 133, 245, 0.1)';
                             btn.style.color = '#b085f5';
                             btn.style.borderColor = '#b085f5';
+                            btn.classList.add('selected-slot');
                             selectedTime = slot;
                             btnConfirm.style.display = 'block';
                         };
@@ -7755,28 +9245,29 @@ window.renderAgendamentoScreen = async function() {
             const dateVal = dateInput.value;
             let targetClientId = isAdminBooking ? clientSelect.value : user.id;
 
-            // Fail-safe: If targetClientId is dummy/zero but we have user_id stored or can resolve it
-            if (!isAdminBooking && (!targetClientId || targetClientId === '00000000-0000-0000-0000-000000000000')) {
-                const storedUserId = localStorage.getItem('user_id');
-                if (storedUserId && storedUserId !== '00000000-0000-0000-0000-000000000000') {
-                    targetClientId = storedUserId;
-                } else {
-                    const userEmail = localStorage.getItem('user_email');
-                    if (userEmail && userEmail !== 'ZeroZynapses') {
-                        console.log("Resolving client UUID via public.profiles by email for safety...");
-                        try {
-                            const { data: profData } = await supabaseClient
-                                .from('profiles')
-                                .select('id')
-                                .eq('email', userEmail)
-                                .maybeSingle();
-                            if (profData && profData.id) {
-                                targetClientId = profData.id;
-                                localStorage.setItem('user_id', targetClientId);
-                            }
-                        } catch (resolveErr) {
-                            console.warn("Could not query client UUID by email:", resolveErr);
+            // For non-admin bookings, ALWAYS try to use the real Supabase Auth session UUID
+            // The user.id from getCurrentUser() may be a fake local UUID (Google login without signInWithIdToken)
+            if (!isAdminBooking) {
+                try {
+                    const { data: sessionData } = await supabaseClient.auth.getSession();
+                    if (sessionData?.session?.user?.id) {
+                        // Use the real Supabase Auth UUID — this is guaranteed to exist in auth.users
+                        const realAuthId = sessionData.session.user.id;
+                        if (realAuthId !== targetClientId) {
+                            console.log(`Using real Supabase Auth UUID: ${realAuthId} (was: ${targetClientId})`);
+                            targetClientId = realAuthId;
+                            localStorage.setItem('user_id', realAuthId);
                         }
+                    }
+                } catch (sessionErr) {
+                    console.warn('Could not fetch Supabase session:', sessionErr);
+                }
+
+                // If still no valid ID, try localStorage
+                if (!targetClientId || targetClientId === '00000000-0000-0000-0000-000000000000') {
+                    const storedUserId = localStorage.getItem('user_id');
+                    if (storedUserId && storedUserId !== '00000000-0000-0000-0000-000000000000') {
+                        targetClientId = storedUserId;
                     }
                 }
             }
@@ -7825,37 +9316,40 @@ window.renderAgendamentoScreen = async function() {
                     return;
                 }
 
-                // Ensure client profile exists in public.profiles before creating the appointment to prevent foreign key violation!
+                // Verify client profile exists in public.profiles before creating the appointment
                 try {
                     const profileCheckResult = await Promise.race([
-                        supabaseClient.from('profiles').select('id, full_name').eq('id', targetClientId).maybeSingle(),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 15000))
+                        supabaseClient.from('profiles').select('id').eq('id', targetClientId).maybeSingle(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 10000))
                     ]);
-                    
+
                     if (!profileCheckResult || !profileCheckResult.data) {
-                        console.log("Client profile not found in public.profiles. Dynamically creating profile to prevent foreign key violation...");
-                        let fallbackName = 'Cliente';
-                        
-                        // If it's the logged-in client, try to get their email or name
-                        if (!isAdminBooking && user) {
-                            fallbackName = user.email ? user.email.split('@')[0] : 'Cliente';
-                        } else if (isAdminBooking) {
-                            // If it's an admin booking a client, fetch client name from auth if possible or use default
-                            fallbackName = 'Cliente ADM';
+                        // Profile doesn't exist — try to auto-create it if we have a real Auth session
+                        // This can happen for Google login users whose profile wasn't created at login time
+                        const { data: sessionData2 } = await supabaseClient.auth.getSession();
+                        const authUser = sessionData2?.session?.user;
+
+                        if (authUser && authUser.id === targetClientId) {
+                            // We have a real auth session for this exact ID — safe to create the profile
+                            const autoName = authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Cliente';
+                            const { error: autoCreateErr } = await supabaseClient.from('profiles').insert([{
+                                id: authUser.id,
+                                full_name: autoName,
+                                email: authUser.email || '',
+                                avatar_url: authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || '',
+                                user_type: 'client',
+                                points: 10
+                            }]);
+                            if (autoCreateErr) {
+                                throw new Error('Não foi possível criar seu perfil automaticamente: ' + autoCreateErr.message);
+                            }
+                            console.log('✅ Profile auto-created for auth user:', authUser.id);
+                        } else {
+                            throw new Error('Seu perfil não foi encontrado. Por favor, saia da conta e entre novamente para sincronizar seu cadastro.');
                         }
-                        
-                        const freshProfile = {
-                            id: targetClientId,
-                            full_name: fallbackName,
-                            user_type: 'client',
-                            created_at: new Date().toISOString()
-                        };
-                        
-                        await supabaseClient.from('profiles').insert([freshProfile]);
-                        console.log("Client profile dynamically created successfully!");
                     }
                 } catch (profileErr) {
-                    console.warn("⚠️ Could not verify or dynamically create client profile:", profileErr);
+                    throw profileErr;
                 }
 
                 let insertData = {
@@ -7929,43 +9423,10 @@ window.renderAgendamentoScreen = async function() {
                 });
 
             } catch (err) {
-                console.warn("⚠️ Falha ou Timeout no Supabase. Utilizando salvamento local resiliente (Modo Offline):", err.message || err);
-                
-                // Save mock offline booking in local storage so client can see it immediately in their list!
-                const dateParts = dateVal.split('-');
-                const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateVal;
-                
-                const mockApp = {
-                    id: 'mock-' + Math.random().toString(36).substr(2, 9),
-                    professional_id: profId,
-                    client_id: targetClientId,
-                    date: dateVal,
-                    time: selectedTime,
-                    status: 'confirmed',
-                    service_name: specialty,
-                    price: priceVal,
-                    created_at: new Date().toISOString(),
-                    professional: { full_name: profName }
-                };
-
-                const cacheKey = `client_apps_${targetClientId}`;
-                let cachedApps = [];
-                try {
-                    const cachedStr = localStorage.getItem(cacheKey);
-                    if (cachedStr) cachedApps = JSON.parse(cachedStr);
-                } catch (e) {
-                    console.error("Erro ao ler cache local:", e);
-                }
-                cachedApps.unshift(mockApp);
-                localStorage.setItem(cacheKey, JSON.stringify(cachedApps));
-
-                showSuccessModal('Agendado!', 'Agendamento reservado com sucesso! (Modo Offline - sincronizado com o cache)', () => {
-                    if (isAdminBooking) {
-                        switchAdminTab('list');
-                    } else {
-                        renderAgendamentoScreen();
-                    }
-                });
+                console.error("❌ Falha crítica no agendamento Supabase:", err);
+                alert("Erro ao confirmar agendamento online: " + (err.message || err));
+                btnConfirm.innerHTML = 'Confirmar Agendamento';
+                btnConfirm.disabled = false;
             }
         };
     }
@@ -7974,6 +9435,205 @@ window.renderAgendamentoScreen = async function() {
         console.error("Critical error in renderAgendamentoScreen:", criticalError);
     }
 };
+
+// ============================================================
+// RATING & APPOINTMENT ACTION HELPERS
+// ============================================================
+
+// Recalculate and update a user's rating based on cancelled/completed counts
+async function updateUserRating(userId, userType) {
+    if (!supabaseClient || !userId) return;
+    try {
+        const { data: p } = await supabaseClient.from('profiles').select('rating, cancelled_count, completed_count').eq('id', userId).maybeSingle();
+        if (!p) return;
+
+        let rating = Number(p.rating) || 4.7;
+        const cancelled = Number(p.cancelled_count) || 0;
+        const completed = Number(p.completed_count) || 0;
+
+        // Client: -0.1 per 2 cancels, +0.1 per 5 completions
+        // Professional: -0.1 per 2 cancels, +0.1 per 20 completions
+        const cancelThreshold = 2;
+        const completeThreshold = userType === 'professional' ? 20 : 5;
+
+        const deductions = Math.floor(cancelled / cancelThreshold) * 0.1;
+        const bonuses = Math.floor(completed / completeThreshold) * 0.1;
+        rating = Math.min(5.0, Math.max(1.0, 4.7 - deductions + bonuses));
+        rating = Math.round(rating * 10) / 10;
+
+        await supabaseClient.from('profiles').update({ rating }).eq('id', userId);
+    } catch (e) {
+        console.warn('updateUserRating error:', e);
+    }
+}
+
+// Cancel appointment — used by both client and professional
+window.cancelAppointment = async function(appId, appDate, appTime, otherPartyId, cancelledBy) {
+    const confirmed = confirm(`Confirmar cancelamento do agendamento de ${appDate.split('-').reverse().join('/')} às ${appTime}?`);
+    if (!confirmed) return;
+
+    try {
+        // Update status to cancelled
+        const { error } = await supabaseClient.from('appointments').update({ status: 'cancelled' }).eq('id', appId);
+        if (error) throw error;
+
+        // Check if cancellation is within 1 hour of the appointment
+        const [year, month, day] = appDate.split('-').map(Number);
+        const [h, m] = appTime.split(':').map(Number);
+        const appointmentTime = new Date(year, month - 1, day, h, m, 0);
+        const now = new Date();
+        const diffMs = appointmentTime - now;
+        const isLateCancellation = diffMs > 0 && diffMs < 60 * 60 * 1000; // less than 1 hour ahead
+
+        const SUPPORT_ID = 'e33bdd17-f6bc-4c72-82cf-c3f76124aca0';
+        const user = await getCurrentUser();
+        const myId = user?.id || localStorage.getItem('user_id');
+
+        if (cancelledBy === 'client') {
+            // Increment client cancelled_count and recalculate
+            await supabaseClient.rpc ? null : null; // no-op
+            const { data: cp } = await supabaseClient.from('profiles').select('cancelled_count, user_type').eq('id', myId).maybeSingle();
+            if (cp) {
+                await supabaseClient.from('profiles').update({ cancelled_count: (Number(cp.cancelled_count) || 0) + 1 }).eq('id', myId);
+                await updateUserRating(myId, cp.user_type || 'client');
+            }
+
+            // If late cancellation, also penalise rating and notify professional
+            if (isLateCancellation) {
+                // Extra penalty: -0.1 immediately for late cancel
+                const { data: cp2 } = await supabaseClient.from('profiles').select('rating').eq('id', myId).maybeSingle();
+                if (cp2) {
+                    const newRating = Math.max(1.0, Math.round((Number(cp2.rating) - 0.1) * 10) / 10);
+                    await supabaseClient.from('profiles').update({ rating: newRating }).eq('id', myId);
+                }
+
+                // Notify professional from support
+                const { data: myProfile } = await supabaseClient.from('profiles').select('full_name').eq('id', myId).maybeSingle();
+                const clientName = myProfile?.full_name || 'Um cliente';
+                const formattedDate = appDate.split('-').reverse().join('/');
+                await supabaseClient.from('notifications').insert([{
+                    user_id: otherPartyId,
+                    sender_id: SUPPORT_ID,
+                    type: 'alert',
+                    title: '⚠️ Cancelamento de Última Hora!',
+                    content: `${clientName} cancelou o agendamento de ${formattedDate} às ${appTime} com menos de 1 hora de antecedência.`,
+                    link: '#agendamento'
+                }]);
+            } else if (otherPartyId) {
+                // Normal cancellation — notify professional
+                const { data: myProfile } = await supabaseClient.from('profiles').select('full_name').eq('id', myId).maybeSingle();
+                const clientName = myProfile?.full_name || 'Um cliente';
+                const formattedDate = appDate.split('-').reverse().join('/');
+                await supabaseClient.from('notifications').insert([{
+                    user_id: otherPartyId,
+                    sender_id: myId,
+                    type: 'appointment',
+                    title: 'Agendamento Cancelado',
+                    content: `${clientName} cancelou o agendamento de ${formattedDate} às ${appTime}.`,
+                    link: '#agendamento'
+                }]);
+            }
+        } else {
+            // Professional cancelling — increment professional cancelled_count
+            const { data: pp } = await supabaseClient.from('profiles').select('cancelled_count, user_type').eq('id', myId).maybeSingle();
+            if (pp) {
+                await supabaseClient.from('profiles').update({ cancelled_count: (Number(pp.cancelled_count) || 0) + 1 }).eq('id', myId);
+                await updateUserRating(myId, 'professional');
+            }
+
+            if (isLateCancellation) {
+                const newRating2 = await supabaseClient.from('profiles').select('rating').eq('id', myId).maybeSingle();
+                if (newRating2.data) {
+                    const nr = Math.max(1.0, Math.round((Number(newRating2.data.rating) - 0.1) * 10) / 10);
+                    await supabaseClient.from('profiles').update({ rating: nr }).eq('id', myId);
+                }
+            }
+
+            // Notify client
+            if (otherPartyId) {
+                const { data: myProfile } = await supabaseClient.from('profiles').select('full_name').eq('id', myId).maybeSingle();
+                const profName = myProfile?.full_name || 'O profissional';
+                const formattedDate = appDate.split('-').reverse().join('/');
+                await supabaseClient.from('notifications').insert([{
+                    user_id: otherPartyId,
+                    sender_id: myId,
+                    type: 'appointment',
+                    title: isLateCancellation ? '⚠️ Cancelamento de Última Hora!' : 'Agendamento Cancelado',
+                    content: `${profName} cancelou seu agendamento de ${formattedDate} às ${appTime}.`,
+                    link: '#agendamento'
+                }]);
+            }
+        }
+
+        showSuccessModal('Cancelado!', 'Agendamento cancelado com sucesso.', () => renderAgendamentoScreen());
+    } catch (err) {
+        alert('Erro ao cancelar: ' + (err.message || err));
+    }
+};
+
+// Professional marks appointment as completed — updates client & professional completed_count
+window.completeAppointment = async function(appId, clientId) {
+    if (!confirm('Marcar este agendamento como concluído?')) return;
+    try {
+        await supabaseClient.from('appointments').update({ status: 'completed' }).eq('id', appId);
+
+        // Increment completed_count for both professional and client
+        const user = await getCurrentUser();
+        const profId = user?.id || localStorage.getItem('user_id');
+
+        const [{ data: pp }, { data: cp }] = await Promise.all([
+            supabaseClient.from('profiles').select('completed_count, user_type').eq('id', profId).maybeSingle(),
+            supabaseClient.from('profiles').select('completed_count, user_type').eq('id', clientId).maybeSingle()
+        ]);
+
+        if (pp) {
+            await supabaseClient.from('profiles').update({ completed_count: (Number(pp.completed_count) || 0) + 1 }).eq('id', profId);
+            await updateUserRating(profId, 'professional');
+        }
+        if (cp) {
+            await supabaseClient.from('profiles').update({ completed_count: (Number(cp.completed_count) || 0) + 1 }).eq('id', clientId);
+            await updateUserRating(clientId, 'client');
+        }
+
+        showSuccessModal('Concluído!', 'Atendimento marcado como concluído.', () => renderAgendamentoScreen());
+    } catch (err) {
+        alert('Erro ao concluir: ' + (err.message || err));
+    }
+};
+
+// Professional reports client no-show — penalises client rating
+window.reportNoShow = async function(appId, clientId) {
+    if (!confirm('Confirmar que o cliente não compareceu ao agendamento?')) return;
+    try {
+        await supabaseClient.from('appointments').update({ status: 'no_show' }).eq('id', appId);
+
+        // Penalise client: same as a cancellation + immediate -0.1
+        const { data: cp } = await supabaseClient.from('profiles').select('cancelled_count, rating, user_type').eq('id', clientId).maybeSingle();
+        if (cp) {
+            const newCancelled = (Number(cp.cancelled_count) || 0) + 1;
+            const newRating = Math.max(1.0, Math.round((Number(cp.rating) - 0.1) * 10) / 10);
+            await supabaseClient.from('profiles').update({ cancelled_count: newCancelled, rating: newRating }).eq('id', clientId);
+            await updateUserRating(clientId, cp.user_type || 'client');
+        }
+
+        // Notify client from support
+        const SUPPORT_ID = 'e33bdd17-f6bc-4c72-82cf-c3f76124aca0';
+        await supabaseClient.from('notifications').insert([{
+            user_id: clientId,
+            sender_id: SUPPORT_ID,
+            type: 'alert',
+            title: '⚠️ Falta registrada',
+            content: 'Você não compareceu ao seu agendamento. Sua pontuação foi reduzida. Lembre-se de cancelar com antecedência.',
+            link: '#agendamento'
+        }]);
+
+        showSuccessModal('Registrado!', 'Falta do cliente registrada e pontuação atualizada.', () => renderAgendamentoScreen());
+    } catch (err) {
+        alert('Erro ao registrar falta: ' + (err.message || err));
+    }
+};
+
+
 
 initMobilePullToRefresh();
 });
@@ -8241,24 +9901,219 @@ function initMobilePullToRefresh() {
         }
     };
 
-    window.toggleAppTheme = function() {
-        const root = document.documentElement;
-        if (root.classList.contains('light-theme')) {
-            root.classList.remove('light-theme');
-            localStorage.setItem('theme', 'dark');
-        } else {
-            root.classList.add('light-theme');
-            localStorage.setItem('theme', 'light');
-        }
-    };
-
-    // Auto-apply saved theme on script load
-    try {
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'light') {
-            document.documentElement.classList.add('light-theme');
-        }
-    } catch(e) {
-        console.warn(e);
-    }
 }
+
+window.toggleAppTheme = function() {
+    const root = document.documentElement;
+    if (root.classList.contains('light-theme')) {
+        root.classList.remove('light-theme');
+        localStorage.setItem('theme', 'dark');
+    } else {
+        root.classList.add('light-theme');
+        localStorage.setItem('theme', 'light');
+    }
+};
+
+// Auto-apply saved theme on script load
+try {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+        document.documentElement.classList.add('light-theme');
+    }
+} catch(e) {
+    console.warn(e);
+}
+
+// --- Guided Onboarding Feature Tour for First Login ---
+window.startOnboardingTour = function() {
+    // Prevent double rendering
+    if (document.getElementById('tour-spotlight')) return;
+    
+    console.log("🎬 Starting onboarding tour...");
+    
+    // 1. Create spotlight element
+    const spotlight = document.createElement('div');
+    spotlight.id = 'tour-spotlight';
+    spotlight.className = 'spotlight-overlay';
+    document.body.appendChild(spotlight);
+    
+    // 2. Create tooltip card
+    const tooltip = document.createElement('div');
+    tooltip.id = 'tour-tooltip';
+    tooltip.className = 'tour-tooltip';
+    document.body.appendChild(tooltip);
+    
+    // Inject styles dynamically if not loaded
+    if (!document.getElementById('tour-styles')) {
+        const style = document.createElement('style');
+        style.id = 'tour-styles';
+        style.textContent = `
+            .spotlight-overlay {
+                position: fixed;
+                border-radius: 50%;
+                box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.85);
+                z-index: 10000;
+                pointer-events: none;
+                transition: all 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .tour-tooltip {
+                position: fixed;
+                background: rgba(18, 18, 18, 0.96);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                border: 1px solid rgba(168, 85, 247, 0.45);
+                box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7);
+                border-radius: 20px;
+                padding: 1.25rem;
+                width: 290px;
+                z-index: 10001;
+                color: white;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                transition: all 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            .tour-tooltip.show {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Steps data
+    const steps = [
+        {
+            selector: 'a.top-tab[href="#busca"]',
+            title: '🧭 Busca',
+            desc: 'Procure por profissionais da sua região'
+        },
+        {
+            selector: 'a.top-tab[href="#gastos"]',
+            title: '💼 Gastos',
+            desc: 'Analise e controle seus gastos na aplicação'
+        },
+        {
+            selector: 'a.top-tab[href="#home"]',
+            title: '🏠 Home',
+            desc: 'Página Inicial com novidades'
+        },
+        {
+            selector: 'a.top-tab[href="#agendamento"]',
+            title: '📅 Agendar',
+            desc: 'Faça agendamentos online sem falar com o profissional'
+        },
+        {
+            selector: 'a.top-tab[href="#perfil"]',
+            title: '👤 Perfil',
+            desc: 'Configure e veja suas informações de Perfil'
+        }
+    ];
+    
+    let currentStep = 0;
+    
+    function updateLayout() {
+        if (currentStep >= steps.length) return;
+        const step = steps[currentStep];
+        const target = document.querySelector(step.selector);
+        if (!target) return;
+        
+        const rect = target.getBoundingClientRect();
+        const pad = 6; // padding for spotlight circle
+        
+        spotlight.style.left = (rect.left - pad) + 'px';
+        spotlight.style.top = (rect.top - pad) + 'px';
+        spotlight.style.width = (rect.width + pad * 2) + 'px';
+        spotlight.style.height = (rect.height + pad * 2) + 'px';
+        
+        // Align horizontally with target center
+        let left = rect.left + rect.width / 2 - 145; // 290px tooltip width / 2
+        // Keep on screen
+        left = Math.max(12, Math.min(window.innerWidth - 302, left));
+        
+        let top = rect.bottom + 15;
+        
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+    }
+    
+    // Listen to window resize and orientation change to update spotlight coordinates instantly!
+    window.addEventListener('resize', updateLayout);
+    window.addEventListener('orientationchange', updateLayout);
+    
+    function renderStep(index) {
+        if (index >= steps.length) {
+            finishTour();
+            return;
+        }
+        
+        const step = steps[index];
+        const target = document.querySelector(step.selector);
+        
+        if (!target) {
+            console.warn(`Target not found for step: ${step.selector}`);
+            currentStep++;
+            renderStep(currentStep);
+            return;
+        }
+        
+        // Build tooltip HTML
+        tooltip.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #888; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+                <span>Tutorial</span>
+                <span>${index + 1} de ${steps.length}</span>
+            </div>
+            <h4 style="margin: 0; font-size: 1.15rem; font-family: 'Eczar', serif; font-weight: 800; color: #b085f5;">${step.title}</h4>
+            <p style="margin: 0; font-size: 0.88rem; color: #ddd; font-weight: 500; line-height: 1.4;">${step.desc}</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <button id="tour-skip-btn" style="background: none; border: none; color: #777; font-size: 0.8rem; font-weight: 700; cursor: pointer; padding: 6px 12px; transition: color 0.2s;" onmouseover="this.style.color='#aaa'" onmouseout="this.style.color='#777'">Pular</button>
+                <button id="tour-next-btn" style="background: #ffffff; border: none; color: #111; font-size: 0.85rem; font-weight: 800; padding: 8px 18px; border-radius: 10px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(255,255,255,0.15);" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='none'">
+                    ${index === steps.length - 1 ? 'Concluir' : 'Próximo'}
+                </button>
+            </div>
+        `;
+        
+        // Position elements dynamically below target
+        tooltip.classList.remove('show');
+        updateLayout();
+        
+        // Force reflow and show
+        tooltip.offsetHeight; 
+        tooltip.classList.add('show');
+        
+        // Listeners
+        document.getElementById('tour-skip-btn').onclick = () => {
+            finishTour();
+        };
+        
+        document.getElementById('tour-next-btn').onclick = () => {
+            currentStep++;
+            tooltip.classList.remove('show');
+            // Small delay to allow fade out before sliding to next target
+            setTimeout(() => {
+                renderStep(currentStep);
+            }, 150);
+        };
+    }
+    
+    function finishTour() {
+        console.log("Tour completed!");
+        localStorage.setItem('onboarding_tour_completed', 'true');
+        
+        window.removeEventListener('resize', updateLayout);
+        window.removeEventListener('orientationchange', updateLayout);
+        
+        tooltip.classList.remove('show');
+        spotlight.style.opacity = '0';
+        
+        setTimeout(() => {
+            spotlight.remove();
+            tooltip.remove();
+        }, 500);
+    }
+    
+    // Start first step
+    renderStep(currentStep);
+};
