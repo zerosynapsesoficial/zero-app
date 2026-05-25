@@ -1497,22 +1497,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     window.supabaseGoogleLogin = async function() {
-        console.log("🚀 Starting real Google Sign-In via Google Identity Services...");
-        
-        // Ensure Google GIS library is loaded
-        if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
-            console.log("Loading Google Identity Services dynamically...");
-            const script = document.createElement('script');
-            script.src = "https://accounts.google.com/gsi/client";
-            script.async = true;
-            script.defer = true;
-            script.onload = () => {
-                triggerRealGoogleLogin();
-            };
-            document.head.appendChild(script);
+        console.log('🚀 Iniciando login Google via Supabase OAuth');
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: window.location.origin + '/#home' }
+        });
+        if (error) {
+            console.error('Erro ao iniciar OAuth Google:', error.message);
+            if (error.message && error.message.includes('Popup closed')) {
+                alert('Login cancelado: a janela de autenticação foi fechada. Por favor, tente novamente.');
+            } else {
+                alert('Não foi possível iniciar o login com o Google.');
+            }
         } else {
-            triggerRealGoogleLogin();
+            // Successful login, navigate to home screen
+            window.location.hash = '#home';
         }
+        return;
+
     };
 
     function triggerRealGoogleLogin() {
