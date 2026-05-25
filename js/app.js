@@ -1582,7 +1582,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return v.toString(16);
                 });
             }
-            let userId = generateUUID();
+            let userId = null;
             let userType = 'client';
             let plan = 'Free';
             let points = 0;
@@ -1622,8 +1622,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         userType = await promptForAccountType({ email });
                         console.log("User selected account type:", userType);
                         
+                        // Create a new profile without specifying the auth user ID (let Supabase generate it)
                         const newProfile = {
-                            id: userId,
                             full_name: name,
                             email: email,
                             user_type: userType,
@@ -1631,14 +1631,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             points: 10
                         };
                         
-                        const { error: insertError } = await supabaseClient
+                        // Use upsert to avoid duplicate email conflict and retrieve profile ID
+                        const { error: upsertError, data: upsertData } = await supabaseClient
                             .from('profiles')
-                            .insert([newProfile]);
-                            
-                        if (insertError) {
-                            console.error("Error creating Google profile:", insertError);
+                            .upsert([newProfile], { onConflict: 'email' })
+                            .select('id')
+                            .single();
+
+                        if (upsertError) {
+                            console.error("Error upserting Google profile:", upsertError);
                         } else {
-                            console.log("✅ Successfully created Google profile in database!");
+                            console.log("✅ Successfully upserted Google profile in database!");
+                            // Set the newly created or existing profile ID for later use
+                            userId = upsertData.id;
                         }
                         points = 10;
                     }
