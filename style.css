@@ -2922,11 +2922,11 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 
 /* Configurar Cartão de Visita - Custom Colors & Theme Responses */
 #menu-item-config-cartao .outline-icon {
-    color: #ffffff !important;
+    filter: brightness(0) invert(1) !important;
 }
 
 .light-theme #menu-item-config-cartao .outline-icon {
-    color: #000000 !important;
+    filter: brightness(0) !important;
 }
 
 /* Full Screen Visitation Card (Professional Profile Home) */

@@ -907,7 +907,7 @@
                             <span>Doações</span>
                         </div>
                         <div class="menu-item" id="menu-item-config-cartao" onclick="window.openCartaoEditMode()" style="display: none;">
-                            <span class="outline-icon" style="display:flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><circle cx="8" cy="12" r="3"></circle><path d="M14 10h5"></path><path d="M14 14h5"></path></svg></span>
+                            <span class="outline-icon cartao-icon" style="color: #ffffff;">🪪</span>
                             <span>Configurar Cartão de Visita</span>
                         </div>
                         <div class="menu-item" onclick="location.hash='#editar-perfil'">
@@ -1645,6 +1645,52 @@
         </div>
     </div>
 
+    <!-- Configuração de Visita Profissional Modal -->
+    <div id="config-visita-modal" class="screen overlay" style="z-index: 1050; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);">
+        <header class="overlay-header" style="background: transparent; border-bottom: 1px solid rgba(255,255,255,0.08);">
+            <button class="back-btn" onclick="hideOverlay('config-visita-modal')" style="background: rgba(0,0,0,0.5); width: 40px; height: 40px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; font-weight: 800; border: none;">✕</button>
+            <h3 style="font-weight: 900; color: #fff; font-size: 1.15rem; letter-spacing: 0.5px;">Configuração de Visita</h3>
+            <div style="width: 40px;"></div>
+        </header>
+        <div class="overlay-content" style="padding: 2rem 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <p style="color: #aaa; font-size: 0.9rem; line-height: 1.6; text-align: center; margin-bottom: 1rem;">
+                Defina como e onde você atende seus clientes, e configure as taxas de atendimento para visitas.
+            </p>
+            
+            <form id="form-config-visita" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <div class="input-group">
+                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Modo de Atendimento</label>
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; font-weight: normal; cursor: pointer; color: #fff;">
+                            <input type="radio" name="modal-work-mode" value="estabelecimento" checked style="width: auto; margin: 0;">
+                            <span>Apenas no meu estabelecimento</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; font-weight: normal; cursor: pointer; color: #fff;">
+                            <input type="radio" name="modal-work-mode" value="domicilio" style="width: auto; margin: 0;">
+                            <span>Apenas a domicílio (Vou até o cliente)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; font-weight: normal; cursor: pointer; color: #fff;">
+                            <input type="radio" name="modal-work-mode" value="ambos" style="width: auto; margin: 0;">
+                            <span>Ambos (No estabelecimento e a domicílio)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="input-group" id="modal-visitation-fee-group" style="display: none;">
+                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Taxa de Deslocamento / Visita</label>
+                    <div style="display: flex; align-items: center; background: #1a1a1a; border-radius: 12px; border: 1px solid #333; margin-top: 8px;">
+                        <span style="padding: 0 10px; color: #888;">R$</span>
+                        <input type="number" id="modal-visitation-fee" step="0.01" placeholder="0,00" style="border: none; background: transparent; padding-left: 0; width: 100%; color: #fff; padding: 0.8rem 0.5rem; outline: none;">
+                    </div>
+                    <small style="display: block; color: #888; margin-top: 5px;">Valor cobrado para ir até a residência do cliente.</small>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem; height: 55px; border-radius: 16px; font-weight: 800; background: #a855f7; border: none; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);">
+                    Salvar Configurações
+                </button>
+            </form>
+        </div>
+    </div>
 
     <!-- Add Service Modal Form -->
     <div id="add-service-modal" class="screen overlay" style="z-index: 1100;">
@@ -1673,6 +1719,18 @@
                 <div class="input-group">
                     <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Preço (R$)</label>
                     <input type="text" id="service-price" placeholder="Ex: 45.00" required style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
+                </div>
+
+                <div class="input-group">
+                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Fotos do Serviço (Até 5)</label>
+                    <div id="service-images-preview" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;">
+                        <!-- Previews will be added here -->
+                    </div>
+                    <label for="service-images-upload" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; color: #ccc; cursor: pointer; text-align: center; margin-top: 8px;">
+                        <span>📸 Adicionar Fotos</span>
+                    </label>
+                    <input type="file" id="service-images-upload" accept="image/*" multiple style="display: none;" onchange="window.handleServiceImagesUpload(event)">
+                    <input type="hidden" id="service-id-hidden" value="">
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="width: 100%; height: 55px; border-radius: 16px; font-weight: 800; background: #a855f7; border: none; margin-top: 1rem; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);">
@@ -1722,9 +1780,9 @@
                 <p style="color: #fff; margin-top: 1.5rem; font-size: 0.9rem; font-weight: 800; letter-spacing: 0.5px;">VALOR: <span id="pix-value" style="color: #10B981;">R$ 0,00</span></p>
                 <div style="background: rgba(255, 193, 7, 0.1); border: 1px solid #ffc107; padding: 12px; border-radius: 12px; margin-top: 15px;">
                     <p style="color: #ffc107; font-size: 0.8rem; font-weight: 800; margin-bottom: 5px;">⚠️ PAGAMENTO PENDENTE</p>
-                    <p style="color: #ccc; font-size: 0.7rem; line-height: 1.4;">Efetue o pagamento e envie o comprovante para o nosso suporte no chat para liberação imediata.</p>
+                    <p style="color: #ccc; font-size: 0.7rem; line-height: 1.4;">Sua assinatura será liberada após confirmação do comprovante contendo seu CPF para o WhatsApp de Suporte.</p>
                 </div>
-                <button class="btn" style="margin-top: 1.5rem; background: #fff; color: #000; font-weight: 900; height: 50px; border-radius: 14px;" onclick="window.location.hash='#chat-msg/support'; hideOverlay('payment-processing');">ENVIAR COMPROVANTE (CHAT)</button>
+                <button class="btn" style="margin-top: 1.5rem; background: #25D366; color: #fff; font-weight: 900; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="window.open('https://wa.me/5511960884884?text=Olá, acabei de solicitar um plano no aplicativo Zero e gostaria de enviar meu comprovante e CPF.', '_blank'); hideOverlay('payment-processing');">🟢 ENVIAR COMPROVANTE WHATSAPP</button>
             </div>
         </div>
     </div>

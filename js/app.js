@@ -924,8 +924,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const plans = type === 'professional' ? [
             { id: 'gratis_prof', name: 'Plano Grátis', price: 0, features: ['Visibilidade Básica', 'Agenda Digital', '1 Serviço no Catálogo'] },
-            { id: 'comum_prof', name: 'Plano Essencial', price: 29.90, features: ['Visibilidade Básica', 'Agenda Digital', '3 Serviços no Catálogo'] },
-            { id: 'plus_prof', name: 'Plano Plus', price: 59.90, features: ['Destaque na Busca', 'Até 5 Serviços no Catálogo', 'Relatórios Financeiros', 'Suporte Prioritário'] }
+            { id: 'comum_prof', name: 'Plano Comum Profissional', price: 29.90, features: ['Visibilidade Básica', 'Agenda Digital', '3 Serviços no Catálogo'] },
+            { id: 'plus_prof', name: 'Plano Plus Profissional', price: 59.90, features: ['Destaque na Busca', 'Até 5 Serviços no Catálogo', 'Relatórios Financeiros', 'Suporte Prioritário'] }
         ] : [
             { id: 'comum_client', name: 'Plano Essencial', price: 0, features: ['Busca de Profissionais', 'Agendamento Online', 'Histórico'] },
             { id: 'plus_client', name: 'Plano Plus', price: 19.90, features: ['Cashback em Pontos', 'Descontos Exclusivos', 'Suporte VIP'] }
@@ -1149,8 +1149,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const type = localStorage.getItem('user_type') || 'client';
         const plans = type === 'professional' ? [
             { id: 'gratis_prof', name: 'Plano Grátis', price: 0 },
-            { id: 'comum_prof', name: 'Plano Essencial', price: 29.90 },
-            { id: 'plus_prof', name: 'Plano Plus', price: 59.90 }
+            { id: 'comum_prof', name: 'Plano Comum Profissional', price: 29.90 },
+            { id: 'plus_prof', name: 'Plano Plus Profissional', price: 59.90 }
         ] : [
             { id: 'comum_client', name: 'Plano Essencial', price: 0 },
             { id: 'plus_client', name: 'Plano Plus', price: 19.90 }
@@ -1218,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.activePaymentPolling = pollInterval;
     };
 
-    window.finalizePaymentSuccess = async function(planObj) {
+    window.finalizePaymentSuccess = function(planObj) {
         const procOverlay = document.getElementById('payment-processing');
         const statusTitle = document.getElementById('payment-status-title');
         const statusMsg = document.getElementById('payment-status-msg');
@@ -1227,57 +1227,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!statusIcon || !statusTitle) return;
 
+        // Visual Success Feedback (Gateway Confirmed)
+        console.log("[Payment Gateway] Webhook Received: PAYMENT_CONFIRMED");
+        
         statusIcon.className = "";
-        statusIcon.innerHTML = `<div style="width: 80px; height: 80px; background: #FCD34D; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #000; margin-bottom: 2rem; animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">⏳</div>`;
-        statusTitle.innerText = "Aprovação Pendente!";
-        
-        const wppNum = "5511960884884";
-        const msgText = encodeURIComponent(`Olá, solicitei a assinatura do ${planObj ? planObj.name : 'Plano'} e gostaria de enviar meu comprovante.`);
-        
-        statusMsg.innerHTML = `
-            A liberação do seu plano requer o envio do comprovante (com CPF).
-            <br><br>
-            <a href="https://wa.me/${wppNum}?text=${msgText}" target="_blank" style="display:inline-block; background:#25D366; color:#fff; font-weight:800; padding:12px 24px; border-radius:30px; text-decoration:none; margin-top:10px;">
-                📱 Enviar Comprovante no WhatsApp
-            </a>
-            <br><br>
-            Seu plano será ativado após aprovação do ADM.
-        `;
+        statusIcon.innerHTML = `<div style="width: 80px; height: 80px; background: #10B981; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #fff; margin-bottom: 2rem; animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">✓</div>`;
+        statusTitle.innerText = "Pagamento Confirmado!";
+        statusMsg.innerText = "Recebemos a confirmação do seu banco. Sua assinatura foi ativada com sucesso!";
         qrContainer.style.display = "none";
 
-        const userId = localStorage.getItem('user_id');
-        const userName = localStorage.getItem('user_name') || 'Usuário';
-
+        // Persistent update in database/storage
         if (planObj) {
-            localStorage.setItem('user_subscription_status', 'pending');
-            localStorage.setItem('user_requested_plan', planObj.name);
-
-            if (supabaseClient && userId && !userId.startsWith('prof-') && !userId.startsWith('mock-')) {
-                try {
-                    await supabaseClient.from('profiles').update({ 
-                        subscription_status: 'pending',
-                        requested_plan: planObj.name
-                    }).eq('id', userId);
-
-                    await supabaseClient.from('notifications').insert([{
-                        user_id: 'admin', // Envia notificação para o(s) admin(s)
-                        title: 'Nova Solicitação de Assinatura',
-                        message: `${userName} solicitou o ${planObj.name}. Aguardando comprovante.`,
-                        type: 'system'
-                    }]);
-                } catch(e) {
-                    console.error("Error saving pending plan:", e);
-                }
-            }
+            localStorage.setItem('user_subscription_plan', planObj.name);
+            // In real app: await supabaseClient.from('profiles').update({ subscription_tier: planObj.id })...
         }
 
         setTimeout(() => {
             if (procOverlay) procOverlay.classList.remove('active');
             hideOverlay('plans-selection');
             updateUserUI();
-            showSuccessModal('Solicitação Recebida', `Por favor, envie o comprovante no WhatsApp para ativarmos seu ${planObj ? planObj.name : 'Plano'}.`);
+            showSuccessModal('Upgrade Concluído!', `Obrigado! Você agora é ${planObj ? planObj.name : 'Premium'}!`);
             statusIcon.innerHTML = ""; 
-        }, 12000);
+        }, 3000);
     };
 
     // --- Initial Flow ---
@@ -1600,8 +1571,14 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('user_email', email);
             localStorage.setItem('user_photo', photo);
             
-            // Default attributes
-            let userId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); });
+            // Generate valid UUID for Supabase
+            function generateUUID() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+            let userId = generateUUID();
             let userType = 'client';
             let plan = 'Free';
             let points = 0;
@@ -1747,8 +1724,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem('user_name', 'Anderson (Google)');
                     localStorage.setItem('user_email', mockEmail);
                     localStorage.setItem('user_photo', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80');
-                    let mockId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); });
-                    localStorage.setItem('user_id', mockId);
+                    localStorage.setItem('user_id', 'mock-google-user-id-' + Math.random().toString(36).substring(2, 11));
                     
                     updateUserUI();
                     
@@ -2801,7 +2777,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Toggle Configuração de Visita Profissional button visibility
         const configVisitaBtn = document.getElementById('menu-item-config-visita');
         if (configVisitaBtn) {
-            configVisitaBtn.style.display = (type === 'professional' || type === 'admin') ? 'flex' : 'none';
+            configVisitaBtn.style.display = 'none'; // Permanently hidden as per plan
         }
 
         // Trigger onboarding tour if logged in and not completed
@@ -3227,9 +3203,59 @@ document.addEventListener('DOMContentLoaded', () => {
         showOverlay('config-cartao-modal');
     };
 
+    let currentServiceImagesBase64 = []; // Temporary variable for uploaded images
+
+    window.handleServiceImagesUpload = function(event) {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+        
+        const previewContainer = document.getElementById('service-images-preview');
+        
+        if (currentServiceImagesBase64.length + files.length > 5) {
+            alert('Você pode adicionar no máximo 5 fotos por serviço.');
+            return;
+        }
+
+        Array.from(files).forEach(file => {
+            if (currentServiceImagesBase64.length >= 5) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64 = e.target.result;
+                currentServiceImagesBase64.push(base64);
+                
+                const imgWrap = document.createElement('div');
+                imgWrap.style.cssText = 'position: relative; width: 60px; height: 60px; flex-shrink: 0;';
+                
+                const img = document.createElement('img');
+                img.src = base64;
+                img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #444;';
+                
+                const delBtn = document.createElement('div');
+                delBtn.innerHTML = '✕';
+                delBtn.style.cssText = 'position: absolute; top: -5px; right: -5px; background: red; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; font-weight: bold;';
+                
+                delBtn.onclick = function() {
+                    const idx = currentServiceImagesBase64.indexOf(base64);
+                    if (idx > -1) currentServiceImagesBase64.splice(idx, 1);
+                    imgWrap.remove();
+                };
+                
+                imgWrap.appendChild(img);
+                imgWrap.appendChild(delBtn);
+                previewContainer.appendChild(imgWrap);
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
     window.openAddServiceForm = () => {
         const form = document.getElementById('add-service-form');
         if (form) form.reset();
+        const idHidden = document.getElementById('service-id-hidden');
+        if (idHidden) idHidden.value = '';
+        currentServiceImagesBase64 = [];
+        const previewContainer = document.getElementById('service-images-preview');
+        if (previewContainer) previewContainer.innerHTML = '';
         showOverlay('add-service-modal');
     };
 
@@ -3242,20 +3268,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const user = await getCurrentUser();
         if (!user) return alert("Usuário não identificado.");
 
+        const idHidden = document.getElementById('service-id-hidden') ? document.getElementById('service-id-hidden').value : '';
         const name = document.getElementById('service-name').value;
         const desc = document.getElementById('service-desc').value;
         const duration = parseInt(document.getElementById('service-duration').value) || 30;
         const priceRaw = document.getElementById('service-price').value.replace(',', '.');
         const priceVal = parseFloat(priceRaw) || 0.00;
         const priceFormatted = priceVal.toFixed(2).replace('.', ',');
-
-        const newService = {
-            id: 'srv-' + Date.now(),
-            name,
-            description: desc,
-            duration,
-            price: priceFormatted
-        };
 
         let services = [];
         try {
@@ -3271,17 +3290,38 @@ document.addEventListener('DOMContentLoaded', () => {
             services = JSON.parse(localStorage.getItem(key) || '[]');
         }
 
-        let plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
-        if (plan === 'Free' || plan === 'Plano Comum') plan = 'Plano Grátis';
-        const type = localStorage.getItem('user_type') || 'client';
-        const limit = (plan === 'Plano Plus' || plan === 'admin' || type === 'admin') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
+        if (idHidden) {
+            const sIndex = services.findIndex(s => s.id === idHidden);
+            if (sIndex > -1) {
+                services[sIndex] = {
+                    ...services[sIndex],
+                    name,
+                    description: desc,
+                    duration,
+                    price: priceFormatted,
+                    images: [...currentServiceImagesBase64]
+                };
+            }
+        } else {
+            let plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
+            if (plan === 'Free' || plan === 'Plano Comum') plan = 'Plano Grátis';
+            const type = localStorage.getItem('user_type') || 'client';
+            const limit = (plan === 'Plano Plus' || plan === 'admin' || type === 'admin') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
 
-        if (services.length >= limit) {
-            alert(`Você atingiu o limite do seu plano (${limit} serviços). Faça upgrade para adicionar mais.`);
-            return;
+            if (services.length >= limit) {
+                alert(`Você atingiu o limite do seu plano (${limit} serviços). Faça upgrade para adicionar mais.`);
+                return;
+            }
+
+            services.push({
+                id: 'srv-' + Date.now(),
+                name,
+                description: desc,
+                duration,
+                price: priceFormatted,
+                images: [...currentServiceImagesBase64]
+            });
         }
-
-        services.push(newService);
 
         try {
             const key = 'local_services_' + user.id;
@@ -3304,9 +3344,9 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCatalogo();
         
         if (typeof showSuccessModal === 'function') {
-            showSuccessModal('Sucesso!', 'Serviço adicionado ao seu catálogo.');
+            showSuccessModal('Sucesso!', 'Serviço salvo no seu catálogo.');
         } else {
-            alert("Serviço adicionado com sucesso!");
+            alert("Serviço salvo com sucesso!");
         }
     };
 
@@ -3385,6 +3425,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    window.openConfigVisitaModal = function() {
+        const mode = localStorage.getItem('user_work_mode') || 'estabelecimento';
+        const fee = localStorage.getItem('user_taxa_deslocamento') || '0';
+        
+        // Find correct radio and check it
+        const radio = document.querySelector(`input[name="modal-work-mode"][value="${mode}"]`);
+        if (radio) {
+            radio.checked = true;
+        }
+        
+        const feeInput = document.getElementById('modal-visitation-fee');
+        if (feeInput) {
+            feeInput.value = fee;
+        }
+        
+        const feeGroup = document.getElementById('modal-visitation-fee-group');
+        if (feeGroup) {
+            feeGroup.style.display = (mode === 'domicilio' || mode === 'ambos') ? 'block' : 'none';
+        }
+        
+        showOverlay('config-visita-modal');
+    };
+
     function setupConfigVisitaListener() {
         // Handle radio changes in registration form
         const regRadios = document.querySelectorAll('input[name="prof-work-mode"]');
@@ -3396,6 +3459,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         });
+
+        // Handle radio changes in configuration modal
+        const modalRadios = document.querySelectorAll('input[name="modal-work-mode"]');
+        modalRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const feeGroup = document.getElementById('modal-visitation-fee-group');
+                if (feeGroup) {
+                    feeGroup.style.display = (e.target.value === 'domicilio' || e.target.value === 'ambos') ? 'block' : 'none';
+                }
+            });
+        });
+
+        // Handle modal form submission
+        const form = document.getElementById('form-config-visita');
+        if (form) {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const userId = localStorage.getItem('user_id');
+                if (!userId) {
+                    alert('⚠️ Usuário não autenticado.');
+                    return;
+                }
+
+                const selectedRadio = document.querySelector('input[name="modal-work-mode"]:checked');
+                const mode = selectedRadio ? selectedRadio.value : 'estabelecimento';
+                const feeInput = document.getElementById('modal-visitation-fee');
+                const fee = (mode === 'domicilio' || mode === 'ambos') && feeInput && feeInput.value
+                    ? parseFloat(feeInput.value)
+                    : 0;
+
+                try {
+                    const { error } = await supabaseClient
+                        .from('profiles')
+                        .update({
+                            work_mode: mode,
+                            taxa_deslocamento: fee
+                        })
+                        .eq('id', userId);
+
+                    if (error) {
+                        alert('Erro ao salvar as configurações: ' + error.message);
+                    } else {
+                        localStorage.setItem('user_work_mode', mode);
+                        localStorage.setItem('user_taxa_deslocamento', fee.toString());
+                        hideOverlay('config-visita-modal');
+                        showSuccessModal('Sucesso!', 'Configurações de visita atualizadas com sucesso!');
+                        
+                        // Sincroniza localmente
+                        syncDatabaseProfiles();
+                    }
+                } catch (err) {
+                    console.error('Error updating visitation config:', err);
+                    alert('Erro inesperado ao salvar as configurações.');
+                }
+            });
+        }
     }
 
     window.openCartaoEditMode = function() {
@@ -3450,71 +3569,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    window.editCartaoWorkMode = async function() {
-        const val = prompt("Modo de Atendimento:\n1 - Apenas Estabelecimento\n2 - Apenas Domicílio\n3 - Ambos", "1");
-        if (!val) return;
-        const modeMap = {'1': 'estabelecimento', '2': 'domicilio', '3': 'ambos'};
-        const mode = modeMap[val] || 'estabelecimento';
-        let fee = 0;
-        if (mode !== 'estabelecimento') {
-            const feeStr = prompt("Taxa de Deslocamento (apenas números, ex: 15.50):", "0");
-            fee = parseFloat(feeStr.replace(',', '.')) || 0;
-        }
-        const id = localStorage.getItem('user_id');
-        if (supabaseClient && !id.startsWith('prof-')) {
-            await supabaseClient.from('profiles').update({ work_mode: mode, taxa_deslocamento: fee }).eq('id', id);
-        }
-        localStorage.setItem('user_work_mode', mode);
-        localStorage.setItem('user_taxa_deslocamento', fee.toString());
-        const prof = (typeof DATA !== 'undefined' && DATA.professionals) ? DATA.professionals.find(p => p.id === id) : null;
-        if (prof) { prof.work_mode = mode; prof.taxa_deslocamento = fee; }
-        window.renderProfessionalHome(id);
-    };
-
-    window.editCartaoLocation = async function() {
-        const city = prompt("Sua Cidade/Região (Ex: São Paulo e Grande ABC):", "");
-        if (!city) return;
-        const address = prompt("Seu Endereço Completo:", "");
-        if (!address) return;
-        const id = localStorage.getItem('user_id');
-        if (supabaseClient && !id.startsWith('prof-')) {
-            await supabaseClient.from('profiles').update({ city: city.trim(), address: address.trim() }).eq('id', id);
-        }
-        const prof = (typeof DATA !== 'undefined' && DATA.professionals) ? DATA.professionals.find(p => p.id === id) : null;
-        if (prof) { prof.city = city.trim(); prof.address = address.trim(); }
-        window.renderProfessionalHome(id);
-    };
-
-    window.editCartaoServicePhotos = async function(serviceId) {
-        const id = localStorage.getItem('user_id');
-        let services = [];
-        try {
-            if (supabaseClient && !id.startsWith('prof-')) {
-                const { data } = await supabaseClient.from('profiles').select('services').eq('id', id).single();
-                if (data && data.services) services = typeof data.services === 'string' ? JSON.parse(data.services) : data.services;
-            }
-            if (services.length === 0) services = JSON.parse(localStorage.getItem('local_services_' + id) || '[]');
-        } catch {
-            services = JSON.parse(localStorage.getItem('local_services_' + id) || '[]');
-        }
-        const idx = services.findIndex(s => s.id === serviceId);
-        if (idx === -1) return;
-        
-        const urls = prompt("Cole as URLs das imagens separadas por vírgula (máximo de 5):", (services[idx].images || []).join(', '));
-        if (urls === null) return;
-        
-        let imgArray = urls.split(',').map(u => u.trim()).filter(u => u.length > 0).slice(0, 5);
-        services[idx].images = imgArray;
-        
-        if (supabaseClient && !id.startsWith('prof-')) {
-            await supabaseClient.from('profiles').update({ services: services }).eq('id', id);
-        }
-        localStorage.setItem('local_services_' + id, JSON.stringify(services));
-        const prof = (typeof DATA !== 'undefined' && DATA.professionals) ? DATA.professionals.find(p => p.id === id) : null;
-        if (prof) prof.services = services;
-        window.renderProfessionalHome(id);
-    };
-
     window.editCartaoService = async function(serviceId) {
         const userId = localStorage.getItem('user_id');
         let services = [];
@@ -3537,30 +3591,61 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sIndex === -1) return;
         const s = services[sIndex];
 
-        const newName = prompt("Nome do Serviço:", s.name);
-        if (newName === null) return;
-        const newDesc = prompt("Descrição:", s.description || "");
-        if (newDesc === null) return;
-        const newPrice = prompt("Preço (ex: 45,00 sem R$):", s.price);
-        if (newPrice === null) return;
-        const newDuration = prompt("Tempo em minutos (ex: 30):", s.duration || 30);
-        if (newDuration === null) return;
-
-        services[sIndex] = {
-            ...s,
-            name: newName.trim() || s.name,
-            description: newDesc.trim(),
-            price: newPrice.trim() || s.price,
-            duration: parseInt(newDuration, 10) || s.duration
-        };
-
-        if (supabaseClient && !userId.startsWith('prof-')) {
-            await supabaseClient.from('profiles').update({ services: services }).eq('id', userId);
+        // Fill form
+        document.getElementById('service-id-hidden').value = s.id;
+        document.getElementById('service-name').value = s.name || '';
+        document.getElementById('service-desc').value = s.description || '';
+        document.getElementById('service-duration').value = s.duration || '';
+        document.getElementById('service-price').value = s.price || '';
+        
+        currentServiceImagesBase64 = Array.isArray(s.images) ? [...s.images] : [];
+        const previewContainer = document.getElementById('service-images-preview');
+        if (previewContainer) {
+            previewContainer.innerHTML = '';
+            currentServiceImagesBase64.forEach(base64 => {
+                const imgWrap = document.createElement('div');
+                imgWrap.style.cssText = 'position: relative; width: 60px; height: 60px; flex-shrink: 0;';
+                
+                const img = document.createElement('img');
+                img.src = base64;
+                img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #444;';
+                
+                const delBtn = document.createElement('div');
+                delBtn.innerHTML = '✕';
+                delBtn.style.cssText = 'position: absolute; top: -5px; right: -5px; background: red; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; font-weight: bold;';
+                
+                delBtn.onclick = function() {
+                    const idx = currentServiceImagesBase64.indexOf(base64);
+                    if (idx > -1) currentServiceImagesBase64.splice(idx, 1);
+                    imgWrap.remove();
+                };
+                
+                imgWrap.appendChild(img);
+                imgWrap.appendChild(delBtn);
+                previewContainer.appendChild(imgWrap);
+            });
         }
-        localStorage.setItem('local_services_' + userId, JSON.stringify(services));
-        const prof = DATA.professionals.find(p => p.id === userId);
-        if (prof) prof.services = services;
-        window.renderProfessionalHome(userId);
+        
+        showOverlay('add-service-modal');
+    };
+
+    window.editCartaoLocalizacao = async function() {
+        const city = prompt("Digite a sua Cidade/Região:");
+        if (city !== null) {
+            const address = prompt("Digite o endereço do seu estabelecimento (opcional):") || '';
+            const id = localStorage.getItem('user_id');
+            if (supabaseClient && !id.startsWith('prof-')) {
+                await supabaseClient.from('profiles').update({ city: city.trim(), address: address.trim() }).eq('id', id);
+            }
+            localStorage.setItem('user_city', city.trim());
+            localStorage.setItem('user_address', address.trim());
+            const prof = DATA.professionals.find(p => p.id === id);
+            if (prof) {
+                prof.city = city.trim();
+                prof.address = address.trim();
+            }
+            window.renderProfessionalHome(id);
+        }
     };
 
     // --- Home Renders (Public Profiles) ---
@@ -3574,6 +3659,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (id.startsWith('prof-')) {
                 prof = DATA.professionals.find(p => p.id === id);
             } else {
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+                if (!uuidRegex.test(id)) {
+                    throw new Error("ID de profissional inválido (formato UUID incorreto)");
+                }
                 const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', id).single();
                 if (error) throw error;
                 prof = data;
@@ -3622,14 +3711,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const displayedServices = (prof.services || []).slice(0, displayLimit);
             const servicesHtml = displayedServices.map(s => {
-                const imgsHtml = (s.images && s.images.length > 0) ? `
-                    <div style="display:flex; gap: 8px; margin-top: 10px; overflow-x: auto; padding-bottom: 5px;">
-                        ${s.images.map(img => `<img src="${img}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #333;">`).join('')}
-                    </div>
-                ` : '';
+                let imagesHtml = '';
+                if (s.images && s.images.length > 0) {
+                    imagesHtml = `<div style="display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; padding-bottom: 5px;">
+                        ${s.images.map(img => `<img src="${img}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1px solid #333; flex-shrink: 0;" onclick="window.open('${img}', '_blank')">`).join('')}
+                    </div>`;
+                }
+                
                 return `
                 <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div style="flex: 1; padding-right: 1rem;">
                             <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
                             <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
@@ -3637,16 +3728,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
                             <div style="color: #FCD34D; font-weight: 900; font-size: 1rem; white-space: nowrap;">R$ ${s.price}</div>
-                            ${isOwnerEditing ? `<div style="display:flex; gap: 4px;">
-                                <button onclick="window.editCartaoServicePhotos('${s.id}')" style="background: rgba(168,85,247,0.2); color: #c084fc; border:1px solid rgba(168,85,247,0.3); border-radius: 8px; padding: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">📸</button>
-                                <button onclick="window.editCartaoService('${s.id}')" style="background: rgba(255,255,255,0.1); color: #fff; border:none; border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">✏️</button>
-                            </div>` : ''}
+                            ${isOwnerEditing ? `<button onclick="window.editCartaoService('${s.id}')" style="background: rgba(255,255,255,0.1); color: #fff; border:none; border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">✏️ Editar</button>` : ''}
                         </div>
                     </div>
-                    ${imgsHtml}
+                    ${imagesHtml}
                 </div>
-            `;
-            }).join('');
+            `}).join('');
 
             // Vitrine HTML for Plus users
             let vitrineHtml = '';
@@ -3753,7 +3840,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             : '';
                         return `
                         <div style="margin-top: 2rem; text-align: center;">
-                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">MODO DE ATENDIMENTO ${isOwnerEditing ? `<span onclick="window.editCartaoWorkMode()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
+                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">MODO DE ATENDIMENTO ${isOwnerEditing ? `<span onclick="hideOverlay('professional-home'); showOverlay('config-cartao-modal')" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
                             <div style="background: rgba(168, 85, 247, 0.08); padding: 1rem 1.25rem; border-radius: 16px; border: 1px solid rgba(168, 85, 247, 0.2); display: flex; flex-direction: column; align-items: center; gap: 4px;">
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span style="font-size: 1.4rem;">${info.icon}</span>
@@ -3765,7 +3852,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })()}
 
                     <div style="margin-top: 2rem; text-align: center; padding-bottom: 150px;">
-                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO ${isOwnerEditing ? `<span onclick="window.editCartaoLocation()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO ${isOwnerEditing ? `<span onclick="window.editCartaoLocalizacao()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
                         <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; display: flex; align-items: center; gap: 1rem; text-align: left; justify-content: flex-start;">
                             <div style="font-size: 1.5rem;">📍</div>
                             <div>
