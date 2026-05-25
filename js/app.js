@@ -511,18 +511,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Keep local lists fully synchronized
                 syncDatabaseProfiles();
                 
-                // If we are on chat page, re-render to reflect new role/data
+                // Keep local lists fully synchronized
+                syncDatabaseProfiles();
                 if (window.location.hash.startsWith('#chat')) {
                     renderChatList();
                 }
+                window.location.hash = '#home';
             } else if (user) {
                 console.log("Profile missing, asking for account type...");
                 const isZero = isAdminUser(user);
                 let chosenType = 'client';
                 if (isZero) {
                     chosenType = 'admin';
-                } else {
+                } else if (!localStorage.getItem('account_type_set')) {
                     chosenType = await promptForAccountType(user);
+                    // Remember that the user has chosen their account type
+                    localStorage.setItem('account_type_set', 'true');
                 }
                 const newProfile = {
                     id: user.id,
