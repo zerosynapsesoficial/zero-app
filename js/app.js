@@ -1493,161 +1493,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     window.supabaseGoogleLogin = async function() {
-        console.log("🚀 Starting real Google Sign-In via Google Identity Services...");
-        
-        // Ensure Google GIS library is loaded
-        if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
-            console.log("Loading Google Identity Services dynamically...");
-            const script = document.createElement('script');
-            script.src = "https://accounts.google.com/gsi/client";
-            script.async = true;
-            script.defer = true;
-            script.onload = () => {
-                triggerRealGoogleLogin();
-            };
-            document.head.appendChild(script);
-        } else {
-            triggerRealGoogleLogin();
-        }
-    };
-
-    function triggerRealGoogleLogin() {
-        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "348192418109-gbg9quomppt6upi5bplu7t7nohnah5ue.apps.googleusercontent.com";
-        console.log("Initializing Google OAuth2 Token Client with Client ID:", clientId);
+        console.log("🚀 Starting real Google Sign-In via native Supabase OAuth...");
         
         try {
-            const client = google.accounts.oauth2.initTokenClient({
-                client_id: clientId,
-                scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email openid',
-                callback: async (tokenResponse) => {
-                    if (tokenResponse && tokenResponse.access_token) {
-                        console.log("✅ Google Access Token received successfully.");
-                        await handleGoogleLoginSuccess(tokenResponse.access_token);
-                    } else {
-                        console.error("Google Auth failed or was cancelled.", tokenResponse);
-                        alert("Não foi possível autenticar com a conta do Google.");
-                    }
-                },
-                error_callback: (err) => {
-                    console.error("Google Auth Error:", err);
-                    alert("Erro ao autenticar com o Google: " + (err.message || "Erro desconhecido"));
+            if (!supabaseClient) {
+                alert("Erro: Supabase não está inicializado.");
+                return;
+            }
+            
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const redirectUrl = isLocal 
+                ? 'http://localhost:3000/#home' 
+                : 'https://zero-delta-one.vercel.app/#home';
+                
+            console.log("Redirecting to Supabase OAuth with redirectUrl:", redirectUrl);
+            
+            const { data, error } = await supabaseClient.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: redirectUrl
                 }
             });
             
-            client.requestAccessToken();
+            if (error) throw error;
         } catch (err) {
-            console.error("Failed to initialize Google Token Client:", err);
-            alert("Erro ao iniciar o login do Google: " + err.message);
-        }
-    }
-    
-    async function handleGoogleLoginSuccess(accessToken) {
-        try {
-            if (typeof showLuxuryNotificationToast === 'function') {
-                showLuxuryNotificationToast('Google Login', 'Sincronizando conta com o servidor...');
-            }
-            
-            // Fetch profile data from Google
-            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: {
-                    Authorization: `Bearer ${accessToken}`
-                }
-            });
-            
-            if (!res.ok) {
-                throw new Error("Falha ao carregar perfil do Google.");
-            }
-            
-            const googleUser = await res.json();
-            console.log("✅ Loaded Google Profile:", googleUser);
-            
-            const email = googleUser.email;
-            const name = googleUser.name || googleUser.given_name || 'Usuário Google';
-            const photo = googleUser.picture || '';
-            const googleSubId = googleUser.sub;
-            
-            // Base local storage keys for active session
-            localStorage.setItem('user_name', name);
-            localStorage.setItem('user_email', email);
-            localStorage.setItem('user_photo', photo);
-            
-            // Default attributes
-            let userId = 'google-user-' + googleSubId;
-            let userType = 'client';
-            let plan = 'Free';
-            let points = 10;
-            
-            // Save attributes locally immediately so we can redirect without waiting
-            localStorage.setItem('user_type', userType);
-            localStorage.setItem('user_id', userId);
-            localStorage.setItem('user_subscription_plan', plan);
-            localStorage.setItem('user_points', points.toString());
-            
-            // Update UI locally
-            updateUserUI();
-            
-            // Hide login errors if visible
-            const errorEl = document.getElementById('login-error-msg');
-            if (errorEl) errorEl.style.display = 'none';
-            
-            // Success Toast
-            if (typeof showLuxuryNotificationToast === 'function') {
-                showLuxuryNotificationToast(
-                    'Entrar com o Google',
-                    `Bem-vindo, ${name}! Login realizado com sucesso.`
-                );
-            }
-            
-            // Redirect immediately
-            console.log("Redirecting to home immediately...");
-            window.location.href = "https://zero-delta-one.vercel.app/#home";
-            setTimeout(() => {
-                window.location.reload();
-            }, 100);
-
-            // Sync with Supabase profiles table in the background (non-blocking)
-            if (supabaseClient) {
-                supabaseClient
-                    .from('profiles')
-                    .select('*')
-                    .eq('email', email)
-                    .maybeSingle()
-                    .then(async ({ data: profile, error }) => {
-                        if (!error && profile) {
-                            console.log("✅ Background sync: Profile match found:", profile);
-                            localStorage.setItem('user_type', profile.user_type || 'client');
-                            localStorage.setItem('user_id', profile.id);
-                            localStorage.setItem('user_subscription_plan', profile.subscription_plan || 'Free');
-                            localStorage.setItem('user_points', (profile.points || 0).toString());
-                            
-                            // Keep avatar/name updated
-                            await supabaseClient
-                                .from('profiles')
-                                .update({
-                                    avatar_url: photo || profile.avatar_url,
-                                    full_name: name
-                                })
-                                .eq('id', profile.id);
-                        } else {
-                            console.log("Background sync: Profile missing or error. Creating profile.");
-                            const newProfile = {
-                                id: userId,
-                                full_name: name,
-                                email: email,
-                                user_type: 'client',
-                                avatar_url: photo,
-                                points: 10
-                            };
-                            await supabaseClient.from('profiles').insert([newProfile]);
-                        }
-                    }).catch(e => {
-                        console.error("Background sync failed:", e);
-                    });
-            }
-            
-        } catch (err) {
-            console.error("🔥 Google sign-in post-auth error:", err);
-            alert("Erro ao processar login do Google: " + err.message);
+            console.error("🔥 Google OAuth Error:", err);
+            alert("Erro ao iniciar login com o Google: " + (err.message || "Erro desconhecido"));
         }
     };
 
