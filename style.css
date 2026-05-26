@@ -2273,8 +2273,8 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 
 /* Google Sign-In Container reset and styling */
 #login #google-login-container {
-    transform: none !important; /* Reset previous shift */
-    margin: calc(1rem + 5vh) auto 1rem !important;
+    transform: translateY(-5vh) !important;
+    margin: 1rem auto 1rem !important;
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;

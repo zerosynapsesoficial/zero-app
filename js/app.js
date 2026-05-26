@@ -117,10 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         localStorage.setItem('user_photo', googlePic);
                     }
                     
-                    window.location.href = "https://zero-delta-one.vercel.app/#home";
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 150);
+                    window.location.hash = '#home';
                 }
 
                 // 2. Busca de Perfil Completo (Sempre tenta atualizar)
@@ -1496,30 +1493,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     window.supabaseGoogleLogin = async function() {
-        console.log("🚀 Starting real Google Sign-In via Supabase OAuth redirect...");
-        if (!supabaseClient) {
-            console.error("Supabase client not initialized.");
-            alert("Erro: Cliente do banco de dados não foi inicializado.");
-            return;
+        console.log("🚀 Starting real Google Sign-In via Google Identity Services...");
+        
+        // Ensure Google GIS library is loaded
+        if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+            console.log("Loading Google Identity Services dynamically...");
+            const script = document.createElement('script');
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            script.onload = () => {
+                triggerRealGoogleLogin();
+            };
+            document.head.appendChild(script);
+        } else {
+            triggerRealGoogleLogin();
         }
+    };
+
+    function triggerRealGoogleLogin() {
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "348192418109-gbg9quomppt6upi5bplu7t7nohnah5ue.apps.googleusercontent.com";
+        console.log("Initializing Google OAuth2 Token Client with Client ID:", clientId);
         
         try {
-            const redirectUrl = window.location.origin; // Dynamically uses the correct origin (zero-delta-one.vercel.app or localhost)
-            console.log("Redirect URL set to:", redirectUrl);
-            
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: redirectUrl
+            const client = google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email openid',
+                callback: async (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        console.log("✅ Google Access Token received successfully.");
+                        await handleGoogleLoginSuccess(tokenResponse.access_token);
+                    } else {
+                        console.error("Google Auth failed or was cancelled.", tokenResponse);
+                        alert("Não foi possível autenticar com a conta do Google.");
+                    }
+                },
+                error_callback: (err) => {
+                    console.error("Google Auth Error:", err);
+                    alert("Erro ao autenticar com o Google: " + (err.message || "Erro desconhecido"));
                 }
             });
             
-            if (error) throw error;
+            client.requestAccessToken();
         } catch (err) {
-            console.error("🔥 Supabase Google Login Error:", err);
-            alert("Erro ao iniciar login com o Google: " + (err.message || "Erro desconhecido"));
+            console.error("Failed to initialize Google Token Client:", err);
+            alert("Erro ao iniciar o login do Google: " + err.message);
         }
-    };
+    }
     
     async function handleGoogleLoginSuccess(accessToken) {
         try {
@@ -1639,10 +1659,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Redirect
-            window.location.href = "https://zero-delta-one.vercel.app/#home";
-            setTimeout(() => {
-                window.location.reload();
-            }, 150);
+            window.location.hash = '#home';
             
         } catch (err) {
             console.error("🔥 Google sign-in post-auth error:", err);
@@ -1713,9 +1730,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     
                     window.location.hash = '#home';
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 150);
                 };
             }
         } else {

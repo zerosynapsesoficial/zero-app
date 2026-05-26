@@ -68,7 +68,7 @@
                 </form>
                 <div class="auth-divider"><span>ou</span></div>
                 <!-- Google Sign-In Container (Dynamic & Resilient) -->
-                <div id="google-login-container" style="display: flex; justify-content: center; margin: 1rem 0; width: 100%;">
+                <div id="google-login-container" class="shift-up" style="display: flex; justify-content: center; margin: 1rem 0; width: 100%;">
                 </div>
                 <p class="auth-footer">Não tem conta? <a href="#user-type-selection">Cadastre-se</a></p>
             </div>
@@ -1255,7 +1255,7 @@
         </div>
 
         <!-- Theme Selection Overlay Modal -->
-        <div id="theme-selection-overlay" class="modal-overlay" style="z-index: 100000;">
+        <div id="theme-selection-overlay" class="modal-overlay" style="z-index: 100000; display: none;">
             <div class="modal-card" style="border: 1px solid rgba(168,85,247,0.3); background: #111; max-width: 440px; width: 92%; padding: 2rem 1.5rem; border-radius: 24px; box-shadow: 0 10px 40px rgba(168,85,247,0.25); display: flex; flex-direction: column; align-items: center; gap: 8px;">
                 <div style="font-size: 2.8rem; margin-bottom: 0.2rem; line-height: 1; filter: drop-shadow(0 0 8px rgba(168,85,247,0.5));">🎨</div>
                 <h3 style="color: #fff; font-size: 1.35rem; font-weight: 900; margin: 0; font-family: 'Eczar', serif;">Escolha seu Estilo</h3>
@@ -1416,10 +1416,7 @@
                         if (window.updateUserUI) {
                             window.updateUserUI();
                         }
-                        window.location.href = "https://zero-delta-one.vercel.app/#home";
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 150);
+                        window.location.hash = '#home';
                     } else {
                         console.log("Google Login: First time login detected. Let fetchProfileInBackground handle profile creation with user prompt modal.");
                     }
@@ -1436,10 +1433,7 @@
                 if (window.updateUserUI) {
                     window.updateUserUI();
                 }
-                window.location.href = "https://zero-delta-one.vercel.app/#home";
-                setTimeout(() => {
-                    window.location.reload();
-                }, 150);
+                window.location.hash = '#home';
             }
         }
     </script>
