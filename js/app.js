@@ -1575,75 +1575,15 @@ document.addEventListener('DOMContentLoaded', () => {
             let userId = 'google-user-' + googleSubId;
             let userType = 'client';
             let plan = 'Free';
-            let points = 0;
+            let points = 10;
             
-            // Sync with Supabase profiles table
-            if (supabaseClient) {
-                try {
-                    console.log("Searching database for existing profile with email:", email);
-                    const { data: profile, error } = await supabaseClient
-                        .from('profiles')
-                        .select('*')
-                        .eq('email', email)
-                        .maybeSingle();
-                        
-                    if (error) {
-                        console.error("Error looking up profile:", error);
-                    }
-                    
-                    if (profile) {
-                        console.log("✅ Profile match found in Supabase:", profile);
-                        userId = profile.id;
-                        userType = profile.user_type || 'client';
-                        plan = profile.subscription_plan || 'Free';
-                        points = profile.points || 0;
-                        
-                        // Keep avatar/name updated
-                        await supabaseClient
-                            .from('profiles')
-                            .update({
-                                avatar_url: photo || profile.avatar_url,
-                                full_name: name
-                            })
-                            .eq('id', userId);
-                    } else {
-                        console.log("Google Login: Profile missing in database. Prompting for account type...");
-                        // Prompt user to select whether they are Client or Professional BEFORE logging in!
-                        userType = await promptForAccountType({ email });
-                        console.log("User selected account type:", userType);
-                        
-                        const newProfile = {
-                            id: userId,
-                            full_name: name,
-                            email: email,
-                            user_type: userType,
-                            avatar_url: photo,
-                            points: 10
-                        };
-                        
-                        const { error: insertError } = await supabaseClient
-                            .from('profiles')
-                            .insert([newProfile]);
-                            
-                        if (insertError) {
-                            console.error("Error creating Google profile:", insertError);
-                        } else {
-                            console.log("✅ Successfully created Google profile in database!");
-                        }
-                        points = 10;
-                    }
-                } catch (dbErr) {
-                    console.error("Database sync exception:", dbErr);
-                }
-            }
-            
-            // Save attributes
+            // Save attributes locally immediately so we can redirect without waiting
             localStorage.setItem('user_type', userType);
             localStorage.setItem('user_id', userId);
             localStorage.setItem('user_subscription_plan', plan);
-            localStorage.setItem('user_points', points);
+            localStorage.setItem('user_points', points.toString());
             
-            // Update UI
+            // Update UI locally
             updateUserUI();
             
             // Hide login errors if visible
@@ -1658,11 +1598,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
             
-            // Redirect
+            // Redirect immediately
+            console.log("Redirecting to home immediately...");
             window.location.href = "https://zero-delta-one.vercel.app/#home";
             setTimeout(() => {
                 window.location.reload();
-            }, 150);
+            }, 100);
+
+            // Sync with Supabase profiles table in the background (non-blocking)
+            if (supabaseClient) {
+                supabaseClient
+                    .from('profiles')
+                    .select('*')
+                    .eq('email', email)
+                    .maybeSingle()
+                    .then(async ({ data: profile, error }) => {
+                        if (!error && profile) {
+                            console.log("✅ Background sync: Profile match found:", profile);
+                            localStorage.setItem('user_type', profile.user_type || 'client');
+                            localStorage.setItem('user_id', profile.id);
+                            localStorage.setItem('user_subscription_plan', profile.subscription_plan || 'Free');
+                            localStorage.setItem('user_points', (profile.points || 0).toString());
+                            
+                            // Keep avatar/name updated
+                            await supabaseClient
+                                .from('profiles')
+                                .update({
+                                    avatar_url: photo || profile.avatar_url,
+                                    full_name: name
+                                })
+                                .eq('id', profile.id);
+                        } else {
+                            console.log("Background sync: Profile missing or error. Creating profile.");
+                            const newProfile = {
+                                id: userId,
+                                full_name: name,
+                                email: email,
+                                user_type: 'client',
+                                avatar_url: photo,
+                                points: 10
+                            };
+                            await supabaseClient.from('profiles').insert([newProfile]);
+                        }
+                    }).catch(e => {
+                        console.error("Background sync failed:", e);
+                    });
+            }
             
         } catch (err) {
             console.error("🔥 Google sign-in post-auth error:", err);
