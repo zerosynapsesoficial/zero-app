@@ -2273,7 +2273,7 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 
 /* Google Sign-In Container reset and styling */
 #login #google-login-container {
-    transform: translateY(-5vh) !important;
+    transform: translateY(-2vh) !important;
     margin: 1rem auto 1rem !important;
     display: flex !important;
     justify-content: center !important;
@@ -2290,7 +2290,7 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
 
 /* Footer reset and styling */
 #login .auth-footer {
-    transform: none !important; /* Reset previous shift */
+    transform: translateY(-2vh) !important; /* Reset previous shift */
     margin-top: 0.75rem !important;
 }
 
