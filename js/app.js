@@ -50,15 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Supabase Client initialized natively through direct Supabase URL.");
             
             // Test connection
-            supabaseClient.from('profiles').select('count', { count: 'exact', head: true })
-                .then(({ error }) => {
+            supabaseClient.from('profiles').select('id', { count: 'exact', head: true })
+                .then(({ count, error }) => {
                     if (error) {
-                        console.error("Supabase Connection Test Failed:", error.message);
-                        if (error.message.includes("API key")) {
-                            alert("ERRO CRÍTICO: A chave do Supabase no código é inválida para o projeto " + url);
+                        console.error("Error fetching total accounts count:", error.message);
+                    } else if (typeof count === 'number') {
+                        const totalSpan = document.getElementById('total-accounts');
+                        if (totalSpan) {
+                            totalSpan.textContent = `Total de Usuários: ${count}`;
                         }
-                    } else {
-                        console.log("Supabase Connection Test Successful.");
                     }
                 });
         } catch (e) {
@@ -1142,11 +1142,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.classList.add('selected');
     };
 
-    window.confirmPlan = function() {
+    window.confirmPlan = async function() {
         if (!window.selectedPlan) return alert("Selecione um plano.");
         if (!window.selectedPayment) return alert("Selecione a forma de pagamento.");
         
         const type = localStorage.getItem('user_type') || 'client';
+        const userId = localStorage.getItem('user_id');
         const plans = type === 'professional' ? [
             { id: 'gratis_prof', name: 'Plano Grátis', price: 0 },
             { id: 'comum_prof', name: 'Plano Essencial', price: 29.90 },
@@ -1175,19 +1176,73 @@ document.addEventListener('DOMContentLoaded', () => {
         qrContainer.style.display = "none";
         procOverlay.classList.add('active');
 
-        if (window.selectedPayment === 'pix') {
-            statusTitle.innerText = "PAGAMENTO PENDENTE";
-            statusMsg.innerText = "Aguardando transferência bancária via PIX. Use o QR Code abaixo.";
-            if (pixValueLabel) pixValueLabel.innerText = `R$ ${planObj.price.toFixed(2)}`;
-            qrContainer.style.display = "block";
+        if (type === 'professional') {
+            statusTitle.innerText = "COMPROVANTE NECESSÁRIO";
+            statusMsg.innerHTML = `
+                Sua assinatura só será liberada mediante o envio do comprovante via CPF para o nosso Suporte no WhatsApp.<br><br>
+                <button onclick="window.open('https://wa.me/5511960884884?text=Olá, sou o profissional e quero enviar o comprovante do ${planObj.name}', '_blank')" 
+                        style="background: #888; color: #fff; font-weight: 800; border: none; padding: 10px 20px; border-radius: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    Enviar Comprovante
+                </button>
+            `;
+            if (window.selectedPayment === 'pix') {
+                if (pixValueLabel) pixValueLabel.innerText = `R$ ${planObj.price.toFixed(2)}`;
+                qrContainer.style.display = "block";
+            }
             
-            // No automatic polling - "Travar" a tela conforme pedido
-            if (window.activePaymentPolling) clearInterval(window.activePaymentPolling);
+            // Notificar ADMs silenciosamente
+            try {
+                if (supabaseClient) {
+                    const profName = localStorage.getItem('user_name') || 'Profissional';
+                    const { data: adms } = await supabaseClient.from('profiles').select('id').eq('user_type', 'admin');
+                    if (adms && adms.length > 0) {
+                        const notifications = adms.map(adm => ({
+                            user_id: adm.id,
+                            sender_id: userId,
+                            type: 'plan_request',
+                            content: `O profissional ${profName} solicitou a liberação do ${planObj.name}. Verifique o comprovante.`
+                        }));
+                        await supabaseClient.from('notifications').insert(notifications);
+                    }
+                }
+            } catch (e) {
+                console.warn("Falha ao notificar ADMs", e);
+            }
+
         } else {
-            // Simulate direct confirmation for Debit (4 seconds delay)
+            if (window.selectedPayment === 'pix') {
+                statusTitle.innerText = "PAGAMENTO PENDENTE";
+                statusMsg.innerText = "Aguardando transferência bancária via PIX. Use o QR Code abaixo.";
+                if (pixValueLabel) pixValueLabel.innerText = `R$ ${planObj.price.toFixed(2)}`;
+                qrContainer.style.display = "block";
+                
+                if (window.activePaymentPolling) clearInterval(window.activePaymentPolling);
+            } else {
+                setTimeout(() => {
+                    window.finalizePaymentSuccess(planObj);
+                }, 4000);
+            }
+        }
+
+        if (window.selectedPayment === 'pix') {
+            const globalImg = document.getElementById('global-pix-qr-img');
+            if (globalImg && supabaseClient) {
+                supabaseClient.from('profiles').select('cover_url').eq('user_type', 'admin').limit(1).then(({ data }) => {
+                    if (data && data.length > 0 && data[0].cover_url) {
+                        globalImg.src = data[0].cover_url;
+                    }
+                }).catch(e => console.warn("Erro ao buscar QR Code global:", e));
+            }
+            // Mover a tela para baixo em 3% do tamanho da tela
             setTimeout(() => {
-                window.finalizePaymentSuccess(planObj);
-            }, 4000);
+                const scrollAmount = window.innerHeight * 0.03;
+                const overlayContent = procOverlay.querySelector('.overlay-content');
+                if (overlayContent) {
+                    overlayContent.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+                }
+                window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+            }, 100);
         }
     };
 
@@ -1267,7 +1322,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Safety check: verify if profile still exists in profiles table. If deleted by admin, force logout.
             const localUserId = localStorage.getItem('user_id');
             const localUserType = localStorage.getItem('user_type');
-            if (localUserId && localUserId !== '00000000-0000-0000-0000-000000000000' && localUserType !== 'admin') {
+            if (localUserId && localUserType !== 'professional' && localUserType !== 'admin' && localUserId !== '00000000-0000-0000-0000-000000000000') {
                 try {
                     const { data: profExists, error: profErr } = await supabaseClient
                         .from('profiles')
@@ -1454,7 +1509,8 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("✅ Admin session established (ID:", adminId, ")");
             if (errorEl) errorEl.style.display = 'none';
             updateUserUI();
-            window.location.hash = '#home';
+            window.location.href = window.location.pathname + '#home';
+            window.location.reload();
             return;
         }
 
@@ -1484,7 +1540,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem('user_points', profile.points || 0);
                 }
                 updateUserUI();
-                window.location.hash = '#home';
+                window.location.href = window.location.pathname + '#home';
+                window.location.reload();
             }
         } catch (err) {
             console.error("🔥 Login crash:", err);
@@ -1572,7 +1629,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('user_photo', photo);
             
             // Default attributes
-            let userId = 'google-user-' + googleSubId;
+            let userId = crypto.randomUUID ? crypto.randomUUID() : 'google-user-' + googleSubId; // Fallback only if very old browser
             let userType = 'client';
             let plan = 'Free';
             let points = 0;
@@ -1659,7 +1716,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Redirect
-            window.location.hash = '#home';
+            window.location.href = window.location.pathname + '#home';
+            window.location.reload();
             
         } catch (err) {
             console.error("🔥 Google sign-in post-auth error:", err);
@@ -1718,7 +1776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem('user_name', 'Anderson (Google)');
                     localStorage.setItem('user_email', mockEmail);
                     localStorage.setItem('user_photo', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80');
-                    localStorage.setItem('user_id', 'mock-google-user-id-' + Math.random().toString(36).substring(2, 11));
+                    localStorage.setItem('user_id', crypto.randomUUID ? crypto.randomUUID() : 'mock-google-user-id-' + Math.random().toString(36).substring(2, 11));
                     
                     updateUserUI();
                     
@@ -1729,7 +1787,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         );
                     }
                     
-                    window.location.hash = '#home';
+                    window.location.href = window.location.pathname + '#home';
+                    window.location.reload();
                 };
             }
         } else {
@@ -2325,8 +2384,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // Conditional displays based on user_type
         const clientFields = document.getElementById('edit-client-fields');
         const profFields = document.getElementById('edit-professional-fields');
+        const adminFields = document.getElementById('edit-admin-fields');
 
-        if (type === 'professional') {
+        if (type === 'admin') {
+            if (clientFields) clientFields.style.display = 'none';
+            if (profFields) profFields.style.display = 'none';
+            if (adminFields) adminFields.style.display = 'flex';
+            
+            const qrFileInput = document.getElementById('edit-admin-qr-file');
+            const qrNameDisplay = document.getElementById('edit-admin-qr-name');
+            if (qrFileInput) {
+                qrFileInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file && qrNameDisplay) {
+                        qrNameDisplay.innerText = file.name;
+                    }
+                };
+            }
+        } else if (type === 'professional') {
             if (clientFields) clientFields.style.display = 'none';
             if (profFields) profFields.style.display = 'flex';
 
@@ -2475,7 +2550,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 address: address
             };
 
-            if (type === 'professional') {
+            if (type === 'admin') {
+                const qrFileInput = document.getElementById('edit-admin-qr-file');
+                if (qrFileInput && qrFileInput.files.length > 0) {
+                    const file = qrFileInput.files[0];
+                    btn.innerText = "Salvando QR...";
+                    try {
+                        const base64Image = await new Promise((resolve) => {
+                            const r = new FileReader();
+                            r.onload = (ev) => {
+                                const img = new Image();
+                                img.onload = () => {
+                                    const canvas = document.createElement('canvas');
+                                    const MAX_WIDTH = 500; 
+                                    let width = img.width;
+                                    let height = img.height;
+                                    if (width > MAX_WIDTH) {
+                                        height = Math.round((height * MAX_WIDTH) / width);
+                                        width = MAX_WIDTH;
+                                    }
+                                    canvas.width = width;
+                                    canvas.height = height;
+                                    const ctx = canvas.getContext('2d');
+                                    ctx.drawImage(img, 0, 0, width, height);
+                                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                                };
+                                img.src = ev.target.result;
+                            };
+                            r.readAsDataURL(file);
+                        });
+                        
+                        const adminId = localStorage.getItem('user_id');
+                        const { error } = await supabaseClient.from('profiles').update({ cover_url: base64Image }).eq('id', adminId);
+                        if (error) throw error;
+                    } catch (e) {
+                        console.error("Failed to upload QR:", e);
+                        alert("Falha ao enviar QR Code: " + e.message);
+                    }
+                }
+            } else if (type === 'professional') {
                 const company = document.getElementById('edit-user-company').value;
                 const category = document.getElementById('edit-user-category').value;
                 const specialties = document.getElementById('edit-user-specialties').value;
@@ -2765,7 +2878,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Toggle Configurar Cartão de Visita button visibility
         const configCartaoBtn = document.getElementById('menu-item-config-cartao');
         if (configCartaoBtn) {
-            configCartaoBtn.style.display = (type === 'professional' || type === 'admin') ? 'flex' : 'none';
+            // Show for client, professional and admin accounts
+            configCartaoBtn.style.display = (type === 'client' || type === 'professional' || type === 'admin') ? 'flex' : 'none';
+            // Open the configuration modal to edit the business card information
+            configCartaoBtn.onclick = function() {
+                window.showConfigCartaoModal();
+            };
         }
 
         // Toggle Configuração de Visita Profissional button visibility
@@ -3499,6 +3617,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    window.editCartaoWorkMode = function() {
+        showOverlay('config-visita-modal');
+    };
+
+    window.editCartaoLocation = async function() {
+        const city = prompt("Digite a nova cidade (ex: São Paulo, SP):");
+        if (city === null) return;
+        const address = prompt("Digite o novo endereço:");
+        if (address === null) return;
+
+        const id = localStorage.getItem('user_id');
+        if (supabaseClient && !id.startsWith('prof-')) {
+            await supabaseClient.from('profiles').update({ city: city.trim(), address: address.trim() }).eq('id', id);
+        }
+        localStorage.setItem('user_city', city.trim());
+        localStorage.setItem('user_address', address.trim());
+        const prof = DATA.professionals.find(p => p.id === id);
+        if (prof) {
+            prof.city = city.trim();
+            prof.address = address.trim();
+        }
+        window.renderProfessionalHome(id);
+    };
+
     window.editCartaoService = async function(serviceId) {
         const userId = localStorage.getItem('user_id');
         let services = [];
@@ -3529,13 +3671,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (newPrice === null) return;
         const newDuration = prompt("Tempo em minutos (ex: 30):", s.duration || 30);
         if (newDuration === null) return;
+        
+        const imagesPrompt = prompt("Deseja adicionar fotos ao catálogo deste serviço?\nCole as URLs separadas por vírgula (máximo 5):", (s.images || []).join(', '));
+        let newImages = s.images || [];
+        if (imagesPrompt !== null) {
+            newImages = imagesPrompt.split(',')
+                .map(url => url.trim())
+                .filter(url => url.length > 0)
+                .slice(0, 5); // Limita a 5 fotos
+        }
 
         services[sIndex] = {
             ...s,
             name: newName.trim() || s.name,
             description: newDesc.trim(),
             price: newPrice.trim() || s.price,
-            duration: parseInt(newDuration, 10) || s.duration
+            duration: parseInt(newDuration, 10) || s.duration,
+            images: newImages
         };
 
         if (supabaseClient && !userId.startsWith('prof-')) {
@@ -3558,6 +3710,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (id.startsWith('prof-')) {
                 prof = DATA.professionals.find(p => p.id === id);
             } else {
+                if (id.startsWith('google-') || id.startsWith('mock-') || !id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                    // Invalid UUID format fallback
+                    const newId = crypto.randomUUID ? crypto.randomUUID() : '00000000-0000-0000-0000-000000000000';
+                    if (id === localStorage.getItem('user_id')) {
+                        localStorage.setItem('user_id', newId);
+                        console.warn("UUID Auto-healed: Reloading...");
+                        window.location.reload();
+                        return;
+                    } else {
+                        throw new Error("UUID de profissional inválido.");
+                    }
+                }
                 const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', id).single();
                 if (error) throw error;
                 prof = data;
@@ -3605,19 +3769,29 @@ document.addEventListener('DOMContentLoaded', () => {
                    </div>`;
 
             const displayedServices = (prof.services || []).slice(0, displayLimit);
-            const servicesHtml = displayedServices.map(s => `
-                <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-                    <div style="flex: 1; padding-right: 1rem;">
-                        <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
-                        <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
-                        <div style="color: #555; font-size: 0.7rem; font-weight: 700; margin-top: 4px;">🕒 ${s.duration || 30} min</div>
+            const servicesHtml = displayedServices.map(s => {
+                const imagesHtml = (s.images && s.images.length > 0) 
+                    ? `<div style="display:flex; gap:8px; overflow-x:auto; margin-top:10px; padding-bottom:5px; scroll-snap-type: x mandatory;">
+                            ${s.images.map(img => `<img src="${img}" style="width:70px; height:70px; object-fit:cover; border-radius:12px; scroll-snap-align: start; flex-shrink:0;">`).join('')}
+                       </div>` 
+                    : '';
+                return `
+                <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex: 1; padding-right: 1rem;">
+                            <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
+                            <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
+                            <div style="color: #555; font-size: 0.7rem; font-weight: 700; margin-top: 4px;">🕒 ${s.duration || 30} min</div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                            <div style="color: #FCD34D; font-weight: 900; font-size: 1rem; white-space: nowrap;">R$ ${s.price}</div>
+                            ${isOwnerEditing ? `<button onclick="window.editCartaoService('${s.id}')" style="background: rgba(255,255,255,0.1); color: #fff; border:none; border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">✏️ Editar</button>` : ''}
+                        </div>
                     </div>
-                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-                        <div style="color: #FCD34D; font-weight: 900; font-size: 1rem; white-space: nowrap;">R$ ${s.price}</div>
-                        ${isOwnerEditing ? `<button onclick="window.editCartaoService('${s.id}')" style="background: rgba(255,255,255,0.1); color: #fff; border:none; border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">✏️ Editar</button>` : ''}
-                    </div>
+                    ${imagesHtml}
                 </div>
-            `).join('');
+                `;
+            }).join('');
 
             // Vitrine HTML for Plus users
             let vitrineHtml = '';
@@ -3724,7 +3898,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             : '';
                         return `
                         <div style="margin-top: 2rem; text-align: center;">
-                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">MODO DE ATENDIMENTO</h4>
+                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">MODO DE ATENDIMENTO ${isOwnerEditing ? `<span onclick="window.editCartaoWorkMode()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
                             <div style="background: rgba(168, 85, 247, 0.08); padding: 1rem 1.25rem; border-radius: 16px; border: 1px solid rgba(168, 85, 247, 0.2); display: flex; flex-direction: column; align-items: center; gap: 4px;">
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span style="font-size: 1.4rem;">${info.icon}</span>
@@ -3736,7 +3910,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })()}
 
                     <div style="margin-top: 2rem; text-align: center; padding-bottom: 150px;">
-                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO</h4>
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO ${isOwnerEditing ? `<span onclick="window.editCartaoLocation()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
                         <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; display: flex; align-items: center; gap: 1rem; text-align: left; justify-content: flex-start;">
                             <div style="font-size: 1.5rem;">📍</div>
                             <div>
@@ -8565,7 +8739,7 @@ window.renderAgendamentoScreen = async function() {
         todayLocal.setHours(0, 0, 0, 0);
         
         container.innerHTML = `
-            <div style="flex: 1; display: flex; flex-direction: column;">
+            <div style="flex: 1; display: flex; flex-direction: column; margin-top: 5vh;">
                 <h4 style="margin: 0 0 1rem 0; color: #fff; font-size: 1.1rem; text-align: center;">Agenda de Cortes Marcados</h4>
                 <div id="prof-appointments-list" style="display: flex; flex-direction: column; gap: 10px;">
                     <div style="text-align:center; padding: 2rem;"><span class="loader-mini"></span></div>
