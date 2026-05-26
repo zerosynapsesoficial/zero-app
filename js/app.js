@@ -1267,7 +1267,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Safety check: verify if profile still exists in profiles table. If deleted by admin, force logout.
             const localUserId = localStorage.getItem('user_id');
             const localUserType = localStorage.getItem('user_type');
-            if (localUserId && localUserId !== '00000000-0000-0000-0000-000000000000' && localUserType !== 'admin') {
+            if (localUserId && !localUserId.startsWith('google-user-') && localUserId !== '00000000-0000-0000-0000-000000000000' && localUserType !== 'admin') {
                 try {
                     const { data: profExists, error: profErr } = await supabaseClient
                         .from('profiles')
