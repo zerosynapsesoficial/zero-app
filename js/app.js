@@ -117,7 +117,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         localStorage.setItem('user_photo', googlePic);
                     }
                     
-                    window.location.hash = '#home';
+                    window.location.href = "https://zero-delta-one.vercel.app/#home";
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 150);
                 }
 
                 // 2. Busca de Perfil Completo (Sempre tenta atualizar)
@@ -1267,7 +1270,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Safety check: verify if profile still exists in profiles table. If deleted by admin, force logout.
             const localUserId = localStorage.getItem('user_id');
             const localUserType = localStorage.getItem('user_type');
-            if (localUserId && !localUserId.startsWith('google-user-') && localUserId !== '00000000-0000-0000-0000-000000000000' && localUserType !== 'admin') {
+            if (localUserId && localUserId !== '00000000-0000-0000-0000-000000000000' && localUserType !== 'admin') {
                 try {
                     const { data: profExists, error: profErr } = await supabaseClient
                         .from('profiles')
@@ -1493,27 +1496,157 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     window.supabaseGoogleLogin = async function() {
-        console.log("🚀 Starting real Google Sign-In via Supabase OAuth...");
+        console.log("🚀 Starting real Google Sign-In via Supabase OAuth redirect...");
         if (!supabaseClient) {
-            alert("Erro: Supabase não inicializado.");
+            console.error("Supabase client not initialized.");
+            alert("Erro: Cliente do banco de dados não foi inicializado.");
             return;
         }
         
         try {
-            const redirectToUrl = window.location.origin + '/';
-            console.log("Redirecting via Supabase OAuth to:", redirectToUrl);
+            const redirectUrl = window.location.origin; // Dynamically uses the correct origin (zero-delta-one.vercel.app or localhost)
+            console.log("Redirect URL set to:", redirectUrl);
             
-            const { data, error } = await supabaseClient.auth.signInWithOAuth({
+            const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: redirectToUrl
+                    redirectTo: redirectUrl
                 }
             });
             
             if (error) throw error;
         } catch (err) {
-            console.error("🔥 Supabase Google Sign-In OAuth error:", err);
-            alert("Erro ao iniciar o login com o Google: " + err.message);
+            console.error("🔥 Supabase Google Login Error:", err);
+            alert("Erro ao iniciar login com o Google: " + (err.message || "Erro desconhecido"));
+        }
+    };
+    
+    async function handleGoogleLoginSuccess(accessToken) {
+        try {
+            if (typeof showLuxuryNotificationToast === 'function') {
+                showLuxuryNotificationToast('Google Login', 'Sincronizando conta com o servidor...');
+            }
+            
+            // Fetch profile data from Google
+            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`
+                }
+            });
+            
+            if (!res.ok) {
+                throw new Error("Falha ao carregar perfil do Google.");
+            }
+            
+            const googleUser = await res.json();
+            console.log("✅ Loaded Google Profile:", googleUser);
+            
+            const email = googleUser.email;
+            const name = googleUser.name || googleUser.given_name || 'Usuário Google';
+            const photo = googleUser.picture || '';
+            const googleSubId = googleUser.sub;
+            
+            // Base local storage keys for active session
+            localStorage.setItem('user_name', name);
+            localStorage.setItem('user_email', email);
+            localStorage.setItem('user_photo', photo);
+            
+            // Default attributes
+            let userId = 'google-user-' + googleSubId;
+            let userType = 'client';
+            let plan = 'Free';
+            let points = 0;
+            
+            // Sync with Supabase profiles table
+            if (supabaseClient) {
+                try {
+                    console.log("Searching database for existing profile with email:", email);
+                    const { data: profile, error } = await supabaseClient
+                        .from('profiles')
+                        .select('*')
+                        .eq('email', email)
+                        .maybeSingle();
+                        
+                    if (error) {
+                        console.error("Error looking up profile:", error);
+                    }
+                    
+                    if (profile) {
+                        console.log("✅ Profile match found in Supabase:", profile);
+                        userId = profile.id;
+                        userType = profile.user_type || 'client';
+                        plan = profile.subscription_plan || 'Free';
+                        points = profile.points || 0;
+                        
+                        // Keep avatar/name updated
+                        await supabaseClient
+                            .from('profiles')
+                            .update({
+                                avatar_url: photo || profile.avatar_url,
+                                full_name: name
+                            })
+                            .eq('id', userId);
+                    } else {
+                        console.log("Google Login: Profile missing in database. Prompting for account type...");
+                        // Prompt user to select whether they are Client or Professional BEFORE logging in!
+                        userType = await promptForAccountType({ email });
+                        console.log("User selected account type:", userType);
+                        
+                        const newProfile = {
+                            id: userId,
+                            full_name: name,
+                            email: email,
+                            user_type: userType,
+                            avatar_url: photo,
+                            points: 10
+                        };
+                        
+                        const { error: insertError } = await supabaseClient
+                            .from('profiles')
+                            .insert([newProfile]);
+                            
+                        if (insertError) {
+                            console.error("Error creating Google profile:", insertError);
+                        } else {
+                            console.log("✅ Successfully created Google profile in database!");
+                        }
+                        points = 10;
+                    }
+                } catch (dbErr) {
+                    console.error("Database sync exception:", dbErr);
+                }
+            }
+            
+            // Save attributes
+            localStorage.setItem('user_type', userType);
+            localStorage.setItem('user_id', userId);
+            localStorage.setItem('user_subscription_plan', plan);
+            localStorage.setItem('user_points', points);
+            
+            // Update UI
+            updateUserUI();
+            
+            // Hide login errors if visible
+            const errorEl = document.getElementById('login-error-msg');
+            if (errorEl) errorEl.style.display = 'none';
+            
+            // Success Toast
+            if (typeof showLuxuryNotificationToast === 'function') {
+                showLuxuryNotificationToast(
+                    'Entrar com o Google',
+                    `Bem-vindo, ${name}! Login realizado com sucesso.`
+                );
+            }
+            
+            // Redirect
+            window.location.href = "https://zero-delta-one.vercel.app/#home";
+            setTimeout(() => {
+                window.location.reload();
+            }, 150);
+            
+        } catch (err) {
+            console.error("🔥 Google sign-in post-auth error:", err);
+            alert("Erro ao processar login do Google: " + err.message);
         }
     };
 
@@ -1522,36 +1655,101 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('google-login-container');
         if (!container) return;
 
-        // Render real Google OAuth button using Supabase OAuth Redirect (immune to COOP/popup postMessage failures)
-        container.innerHTML = `
-            <button onclick="window.supabaseGoogleLogin()" style="
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 12px;
-                background: #fff;
-                color: #000;
-                border: 1px solid #ddd;
-                border-radius: 12px;
-                padding: 12px 24px;
-                font-size: 0.95rem;
-                font-weight: 600;
-                cursor: pointer;
-                width: 100%;
-                max-width: 240px;
-                transition: all 0.2s ease;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                margin: 0 auto;
-            " onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">
-                <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
-                </svg>
-                <span>Entrar com o Google</span>
-            </button>
-        `;
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+        if (isLocal) {
+            console.log("ℹ️ Google Sign-In running in offline mock-friendly sandbox mode.");
+            container.innerHTML = `
+                <button id="btn-mock-google-login" style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    background: #fff;
+                    color: #000;
+                    border: 1px solid #ddd;
+                    border-radius: 12px;
+                    padding: 12px 24px;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    width: 100%;
+                    max-width: 240px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                " onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">
+                    <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                    </svg>
+                    <span>Entrar com o Google</span>
+                </button>
+            `;
+
+            const btn = document.getElementById('btn-mock-google-login');
+            if (btn) {
+                btn.onclick = async (e) => {
+                    e.preventDefault();
+                    console.log("🔑 Google sign-in local mock redirect...");
+                    
+                    const mockEmail = 'anderson.google@gmail.com';
+                    const chosenType = await promptForAccountType({ email: mockEmail });
+                    
+                    localStorage.setItem('user_type', chosenType);
+                    localStorage.setItem('user_name', 'Anderson (Google)');
+                    localStorage.setItem('user_email', mockEmail);
+                    localStorage.setItem('user_photo', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80');
+                    localStorage.setItem('user_id', 'mock-google-user-id-' + Math.random().toString(36).substring(2, 11));
+                    
+                    updateUserUI();
+                    
+                    if (typeof showLuxuryNotificationToast === 'function') {
+                        showLuxuryNotificationToast(
+                            'Entrar com o Google',
+                            'Simulação ativada com sucesso! Login concedido via Google offline.'
+                        );
+                    }
+                    
+                    window.location.hash = '#home';
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 150);
+                };
+            }
+        } else {
+            // Render real Google OAuth button using Supabase OAuth Redirect (immune to COOP/popup postMessage failures)
+            container.innerHTML = `
+                <button onclick="window.supabaseGoogleLogin()" style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    background: #fff;
+                    color: #000;
+                    border: 1px solid #ddd;
+                    border-radius: 12px;
+                    padding: 12px 24px;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    width: 100%;
+                    max-width: 240px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    margin: 0 auto;
+                " onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">
+                    <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                    </svg>
+                    <span>Entrar com o Google</span>
+                </button>
+            `;
+        }
     }
 
     // --- Global Auth & Form Event Delegation ---
