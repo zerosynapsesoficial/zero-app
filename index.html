@@ -50,7 +50,7 @@
             <div class="auth-container">
                 <div class="login-logo">Estética X</div>
                 <h2 style="font-family: 'Eczar', serif; text-align: center; margin-top: 0;">Bem-vindo</h2>
-                <p style="font-family: 'Eczar', serif; text-align: center;">Conecte-se à comunidade regional de barbearias, salões, estúdios e serviços de estética</p>
+                <p style="font-family: 'Eczar', serif; text-align: center;">Conecte-se à comunidade regional de barbearias, salões de beleza, estúdios de tatuagem e outros serviços de estética e bem-estar</p>
                 <form id="login-form" action="#" method="post" onsubmit="return false;">
                     <div class="input-group" style="text-align: center;">
                         <label>Email</label>
@@ -907,9 +907,10 @@
                             <span>Doações</span>
                         </div>
                         <div class="menu-item" id="menu-item-config-cartao" onclick="window.openCartaoEditMode()" style="display: none;">
-                            <span class="outline-icon cartao-icon" style="color: #ffffff;">🪪</span>
+                            <span class="outline-icon" style="color: #a855f7;">🪪</span>
                             <span>Configurar Cartão de Visita</span>
                         </div>
+
                         <div class="menu-item" onclick="location.hash='#editar-perfil'">
                             <span class="outline-icon" style="color: #a855f7;">✎</span>
                             <span>Editar Perfil</span>
@@ -1254,7 +1255,7 @@
         </div>
 
         <!-- Theme Selection Overlay Modal -->
-        <div id="theme-selection-overlay" class="modal-overlay" style="z-index: 100000; display: none;">
+        <div id="theme-selection-overlay" class="modal-overlay" style="z-index: 100000;">
             <div class="modal-card" style="border: 1px solid rgba(168,85,247,0.3); background: #111; max-width: 440px; width: 92%; padding: 2rem 1.5rem; border-radius: 24px; box-shadow: 0 10px 40px rgba(168,85,247,0.25); display: flex; flex-direction: column; align-items: center; gap: 8px;">
                 <div style="font-size: 2.8rem; margin-bottom: 0.2rem; line-height: 1; filter: drop-shadow(0 0 8px rgba(168,85,247,0.5));">🎨</div>
                 <h3 style="color: #fff; font-size: 1.35rem; font-weight: 900; margin: 0; font-family: 'Eczar', serif;">Escolha seu Estilo</h3>
@@ -1415,7 +1416,10 @@
                         if (window.updateUserUI) {
                             window.updateUserUI();
                         }
-                        window.location.hash = '#home';
+                        window.location.href = "https://zero-delta-one.vercel.app/#home";
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 150);
                     } else {
                         console.log("Google Login: First time login detected. Let fetchProfileInBackground handle profile creation with user prompt modal.");
                     }
@@ -1432,7 +1436,10 @@
                 if (window.updateUserUI) {
                     window.updateUserUI();
                 }
-                window.location.hash = '#home';
+                window.location.href = "https://zero-delta-one.vercel.app/#home";
+                setTimeout(() => {
+                    window.location.reload();
+                }, 150);
             }
         }
     </script>
@@ -1721,18 +1728,6 @@
                     <input type="text" id="service-price" placeholder="Ex: 45.00" required style="border-radius: 12px; padding: 0.75rem 1rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 100%;">
                 </div>
 
-                <div class="input-group">
-                    <label style="font-weight: 700; color: #a855f7; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Fotos do Serviço (Até 5)</label>
-                    <div id="service-images-preview" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;">
-                        <!-- Previews will be added here -->
-                    </div>
-                    <label for="service-images-upload" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,0.05); border: 1px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 1rem; color: #ccc; cursor: pointer; text-align: center; margin-top: 8px;">
-                        <span>📸 Adicionar Fotos</span>
-                    </label>
-                    <input type="file" id="service-images-upload" accept="image/*" multiple style="display: none;" onchange="window.handleServiceImagesUpload(event)">
-                    <input type="hidden" id="service-id-hidden" value="">
-                </div>
-
                 <button type="submit" class="btn btn-primary" style="width: 100%; height: 55px; border-radius: 16px; font-weight: 800; background: #a855f7; border: none; margin-top: 1rem; box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);">
                     Salvar Serviço
                 </button>
@@ -1780,9 +1775,9 @@
                 <p style="color: #fff; margin-top: 1.5rem; font-size: 0.9rem; font-weight: 800; letter-spacing: 0.5px;">VALOR: <span id="pix-value" style="color: #10B981;">R$ 0,00</span></p>
                 <div style="background: rgba(255, 193, 7, 0.1); border: 1px solid #ffc107; padding: 12px; border-radius: 12px; margin-top: 15px;">
                     <p style="color: #ffc107; font-size: 0.8rem; font-weight: 800; margin-bottom: 5px;">⚠️ PAGAMENTO PENDENTE</p>
-                    <p style="color: #ccc; font-size: 0.7rem; line-height: 1.4;">Sua assinatura será liberada após confirmação do comprovante contendo seu CPF para o WhatsApp de Suporte.</p>
+                    <p style="color: #ccc; font-size: 0.7rem; line-height: 1.4;">Efetue o pagamento e envie o comprovante para o nosso suporte no chat para liberação imediata.</p>
                 </div>
-                <button class="btn" style="margin-top: 1.5rem; background: #25D366; color: #fff; font-weight: 900; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="window.open('https://wa.me/5511960884884?text=Olá, acabei de solicitar um plano no aplicativo Zero e gostaria de enviar meu comprovante e CPF.', '_blank'); hideOverlay('payment-processing');">🟢 ENVIAR COMPROVANTE WHATSAPP</button>
+                <button class="btn" style="margin-top: 1.5rem; background: #fff; color: #000; font-weight: 900; height: 50px; border-radius: 14px;" onclick="window.location.hash='#chat-msg/support'; hideOverlay('payment-processing');">ENVIAR COMPROVANTE (CHAT)</button>
             </div>
         </div>
     </div>

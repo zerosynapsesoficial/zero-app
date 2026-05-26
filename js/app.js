@@ -511,22 +511,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Keep local lists fully synchronized
                 syncDatabaseProfiles();
                 
-                // Keep local lists fully synchronized
-                syncDatabaseProfiles();
+                // If we are on chat page, re-render to reflect new role/data
                 if (window.location.hash.startsWith('#chat')) {
                     renderChatList();
                 }
-                window.location.hash = '#home';
             } else if (user) {
                 console.log("Profile missing, asking for account type...");
                 const isZero = isAdminUser(user);
                 let chosenType = 'client';
                 if (isZero) {
                     chosenType = 'admin';
-                } else if (!localStorage.getItem('account_type_set')) {
+                } else {
                     chosenType = await promptForAccountType(user);
-                    // Remember that the user has chosen their account type
-                    localStorage.setItem('account_type_set', 'true');
                 }
                 const newProfile = {
                     id: user.id,
@@ -928,8 +924,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const plans = type === 'professional' ? [
             { id: 'gratis_prof', name: 'Plano Grátis', price: 0, features: ['Visibilidade Básica', 'Agenda Digital', '1 Serviço no Catálogo'] },
-            { id: 'comum_prof', name: 'Plano Comum Profissional', price: 29.90, features: ['Visibilidade Básica', 'Agenda Digital', '3 Serviços no Catálogo'] },
-            { id: 'plus_prof', name: 'Plano Plus Profissional', price: 59.90, features: ['Destaque na Busca', 'Até 5 Serviços no Catálogo', 'Relatórios Financeiros', 'Suporte Prioritário'] }
+            { id: 'comum_prof', name: 'Plano Essencial', price: 29.90, features: ['Visibilidade Básica', 'Agenda Digital', '3 Serviços no Catálogo'] },
+            { id: 'plus_prof', name: 'Plano Plus', price: 59.90, features: ['Destaque na Busca', 'Até 5 Serviços no Catálogo', 'Relatórios Financeiros', 'Suporte Prioritário'] }
         ] : [
             { id: 'comum_client', name: 'Plano Essencial', price: 0, features: ['Busca de Profissionais', 'Agendamento Online', 'Histórico'] },
             { id: 'plus_client', name: 'Plano Plus', price: 19.90, features: ['Cashback em Pontos', 'Descontos Exclusivos', 'Suporte VIP'] }
@@ -1153,8 +1149,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const type = localStorage.getItem('user_type') || 'client';
         const plans = type === 'professional' ? [
             { id: 'gratis_prof', name: 'Plano Grátis', price: 0 },
-            { id: 'comum_prof', name: 'Plano Comum Profissional', price: 29.90 },
-            { id: 'plus_prof', name: 'Plano Plus Profissional', price: 59.90 }
+            { id: 'comum_prof', name: 'Plano Essencial', price: 29.90 },
+            { id: 'plus_prof', name: 'Plano Plus', price: 59.90 }
         ] : [
             { id: 'comum_client', name: 'Plano Essencial', price: 0 },
             { id: 'plus_client', name: 'Plano Plus', price: 19.90 }
@@ -1497,24 +1493,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     window.supabaseGoogleLogin = async function() {
-        console.log('🚀 Iniciando login Google via Supabase OAuth');
-        const { data, error } = await supabaseClient.auth.signInWithOAuth({
-            provider: 'google',
-            options: { redirectTo: window.location.origin + '/#home' }
-        });
-        if (error) {
-            console.error('Erro ao iniciar OAuth Google:', error.message);
-            if (error.message && error.message.includes('Popup closed')) {
-                alert('Login cancelado: a janela de autenticação foi fechada. Por favor, tente novamente.');
-            } else {
-                alert('Não foi possível iniciar o login com o Google.');
-            }
+        console.log("🚀 Starting real Google Sign-In via Google Identity Services...");
+        
+        // Ensure Google GIS library is loaded
+        if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+            console.log("Loading Google Identity Services dynamically...");
+            const script = document.createElement('script');
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            script.onload = () => {
+                triggerRealGoogleLogin();
+            };
+            document.head.appendChild(script);
         } else {
-            // Successful login, navigate to home screen
-            window.location.hash = '#home';
+            triggerRealGoogleLogin();
         }
-        return;
-
     };
 
     function triggerRealGoogleLogin() {
@@ -1577,14 +1571,8 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('user_email', email);
             localStorage.setItem('user_photo', photo);
             
-            // Generate valid UUID for Supabase
-            function generateUUID() {
-                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-                    return v.toString(16);
-                });
-            }
-            let userId = null;
+            // Default attributes
+            let userId = 'google-user-' + googleSubId;
             let userType = 'client';
             let plan = 'Free';
             let points = 0;
@@ -1624,8 +1612,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         userType = await promptForAccountType({ email });
                         console.log("User selected account type:", userType);
                         
-                        // Create a new profile without specifying the auth user ID (let Supabase generate it)
                         const newProfile = {
+                            id: userId,
                             full_name: name,
                             email: email,
                             user_type: userType,
@@ -1633,19 +1621,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             points: 10
                         };
                         
-                        // Use upsert to avoid duplicate email conflict and retrieve profile ID
-                        const { error: upsertError, data: upsertData } = await supabaseClient
+                        const { error: insertError } = await supabaseClient
                             .from('profiles')
-                            .upsert([newProfile], { onConflict: 'email' })
-                            .select('id')
-                            .single();
-
-                        if (upsertError) {
-                            console.error("Error upserting Google profile:", upsertError);
+                            .insert([newProfile]);
+                            
+                        if (insertError) {
+                            console.error("Error creating Google profile:", insertError);
                         } else {
-                            console.log("✅ Successfully upserted Google profile in database!");
-                            // Set the newly created or existing profile ID for later use
-                            userId = upsertData.id;
+                            console.log("✅ Successfully created Google profile in database!");
                         }
                         points = 10;
                     }
@@ -1676,7 +1659,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Redirect
-            window.location.hash = '#home';
+            window.location.href = "https://zero-delta-one.vercel.app/#home";
+            setTimeout(() => {
+                window.location.reload();
+            }, 150);
             
         } catch (err) {
             console.error("🔥 Google sign-in post-auth error:", err);
@@ -1747,6 +1733,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     
                     window.location.hash = '#home';
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 150);
                 };
             }
         } else {
@@ -2788,7 +2777,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Toggle Configuração de Visita Profissional button visibility
         const configVisitaBtn = document.getElementById('menu-item-config-visita');
         if (configVisitaBtn) {
-            configVisitaBtn.style.display = 'none'; // Permanently hidden as per plan
+            configVisitaBtn.style.display = (type === 'professional' || type === 'admin') ? 'flex' : 'none';
         }
 
         // Trigger onboarding tour if logged in and not completed
@@ -3214,59 +3203,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showOverlay('config-cartao-modal');
     };
 
-    let currentServiceImagesBase64 = []; // Temporary variable for uploaded images
-
-    window.handleServiceImagesUpload = function(event) {
-        const files = event.target.files;
-        if (!files || files.length === 0) return;
-        
-        const previewContainer = document.getElementById('service-images-preview');
-        
-        if (currentServiceImagesBase64.length + files.length > 5) {
-            alert('Você pode adicionar no máximo 5 fotos por serviço.');
-            return;
-        }
-
-        Array.from(files).forEach(file => {
-            if (currentServiceImagesBase64.length >= 5) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const base64 = e.target.result;
-                currentServiceImagesBase64.push(base64);
-                
-                const imgWrap = document.createElement('div');
-                imgWrap.style.cssText = 'position: relative; width: 60px; height: 60px; flex-shrink: 0;';
-                
-                const img = document.createElement('img');
-                img.src = base64;
-                img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #444;';
-                
-                const delBtn = document.createElement('div');
-                delBtn.innerHTML = '✕';
-                delBtn.style.cssText = 'position: absolute; top: -5px; right: -5px; background: red; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; font-weight: bold;';
-                
-                delBtn.onclick = function() {
-                    const idx = currentServiceImagesBase64.indexOf(base64);
-                    if (idx > -1) currentServiceImagesBase64.splice(idx, 1);
-                    imgWrap.remove();
-                };
-                
-                imgWrap.appendChild(img);
-                imgWrap.appendChild(delBtn);
-                previewContainer.appendChild(imgWrap);
-            };
-            reader.readAsDataURL(file);
-        });
-    };
-
     window.openAddServiceForm = () => {
         const form = document.getElementById('add-service-form');
         if (form) form.reset();
-        const idHidden = document.getElementById('service-id-hidden');
-        if (idHidden) idHidden.value = '';
-        currentServiceImagesBase64 = [];
-        const previewContainer = document.getElementById('service-images-preview');
-        if (previewContainer) previewContainer.innerHTML = '';
         showOverlay('add-service-modal');
     };
 
@@ -3279,13 +3218,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const user = await getCurrentUser();
         if (!user) return alert("Usuário não identificado.");
 
-        const idHidden = document.getElementById('service-id-hidden') ? document.getElementById('service-id-hidden').value : '';
         const name = document.getElementById('service-name').value;
         const desc = document.getElementById('service-desc').value;
         const duration = parseInt(document.getElementById('service-duration').value) || 30;
         const priceRaw = document.getElementById('service-price').value.replace(',', '.');
         const priceVal = parseFloat(priceRaw) || 0.00;
         const priceFormatted = priceVal.toFixed(2).replace('.', ',');
+
+        const newService = {
+            id: 'srv-' + Date.now(),
+            name,
+            description: desc,
+            duration,
+            price: priceFormatted
+        };
 
         let services = [];
         try {
@@ -3301,38 +3247,17 @@ document.addEventListener('DOMContentLoaded', () => {
             services = JSON.parse(localStorage.getItem(key) || '[]');
         }
 
-        if (idHidden) {
-            const sIndex = services.findIndex(s => s.id === idHidden);
-            if (sIndex > -1) {
-                services[sIndex] = {
-                    ...services[sIndex],
-                    name,
-                    description: desc,
-                    duration,
-                    price: priceFormatted,
-                    images: [...currentServiceImagesBase64]
-                };
-            }
-        } else {
-            let plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
-            if (plan === 'Free' || plan === 'Plano Comum') plan = 'Plano Grátis';
-            const type = localStorage.getItem('user_type') || 'client';
-            const limit = (plan === 'Plano Plus' || plan === 'admin' || type === 'admin') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
+        let plan = localStorage.getItem('user_subscription_plan') || 'Plano Grátis';
+        if (plan === 'Free' || plan === 'Plano Comum') plan = 'Plano Grátis';
+        const type = localStorage.getItem('user_type') || 'client';
+        const limit = (plan === 'Plano Plus' || plan === 'admin' || type === 'admin') ? 5 : (plan === 'Plano Essencial' ? 3 : 1);
 
-            if (services.length >= limit) {
-                alert(`Você atingiu o limite do seu plano (${limit} serviços). Faça upgrade para adicionar mais.`);
-                return;
-            }
-
-            services.push({
-                id: 'srv-' + Date.now(),
-                name,
-                description: desc,
-                duration,
-                price: priceFormatted,
-                images: [...currentServiceImagesBase64]
-            });
+        if (services.length >= limit) {
+            alert(`Você atingiu o limite do seu plano (${limit} serviços). Faça upgrade para adicionar mais.`);
+            return;
         }
+
+        services.push(newService);
 
         try {
             const key = 'local_services_' + user.id;
@@ -3355,9 +3280,9 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCatalogo();
         
         if (typeof showSuccessModal === 'function') {
-            showSuccessModal('Sucesso!', 'Serviço salvo no seu catálogo.');
+            showSuccessModal('Sucesso!', 'Serviço adicionado ao seu catálogo.');
         } else {
-            alert("Serviço salvo com sucesso!");
+            alert("Serviço adicionado com sucesso!");
         }
     };
 
@@ -3602,61 +3527,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sIndex === -1) return;
         const s = services[sIndex];
 
-        // Fill form
-        document.getElementById('service-id-hidden').value = s.id;
-        document.getElementById('service-name').value = s.name || '';
-        document.getElementById('service-desc').value = s.description || '';
-        document.getElementById('service-duration').value = s.duration || '';
-        document.getElementById('service-price').value = s.price || '';
-        
-        currentServiceImagesBase64 = Array.isArray(s.images) ? [...s.images] : [];
-        const previewContainer = document.getElementById('service-images-preview');
-        if (previewContainer) {
-            previewContainer.innerHTML = '';
-            currentServiceImagesBase64.forEach(base64 => {
-                const imgWrap = document.createElement('div');
-                imgWrap.style.cssText = 'position: relative; width: 60px; height: 60px; flex-shrink: 0;';
-                
-                const img = document.createElement('img');
-                img.src = base64;
-                img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #444;';
-                
-                const delBtn = document.createElement('div');
-                delBtn.innerHTML = '✕';
-                delBtn.style.cssText = 'position: absolute; top: -5px; right: -5px; background: red; color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; font-weight: bold;';
-                
-                delBtn.onclick = function() {
-                    const idx = currentServiceImagesBase64.indexOf(base64);
-                    if (idx > -1) currentServiceImagesBase64.splice(idx, 1);
-                    imgWrap.remove();
-                };
-                
-                imgWrap.appendChild(img);
-                imgWrap.appendChild(delBtn);
-                previewContainer.appendChild(imgWrap);
-            });
-        }
-        
-        showOverlay('add-service-modal');
-    };
+        const newName = prompt("Nome do Serviço:", s.name);
+        if (newName === null) return;
+        const newDesc = prompt("Descrição:", s.description || "");
+        if (newDesc === null) return;
+        const newPrice = prompt("Preço (ex: 45,00 sem R$):", s.price);
+        if (newPrice === null) return;
+        const newDuration = prompt("Tempo em minutos (ex: 30):", s.duration || 30);
+        if (newDuration === null) return;
 
-    window.editCartaoLocalizacao = async function() {
-        const city = prompt("Digite a sua Cidade/Região:");
-        if (city !== null) {
-            const address = prompt("Digite o endereço do seu estabelecimento (opcional):") || '';
-            const id = localStorage.getItem('user_id');
-            if (supabaseClient && !id.startsWith('prof-')) {
-                await supabaseClient.from('profiles').update({ city: city.trim(), address: address.trim() }).eq('id', id);
-            }
-            localStorage.setItem('user_city', city.trim());
-            localStorage.setItem('user_address', address.trim());
-            const prof = DATA.professionals.find(p => p.id === id);
-            if (prof) {
-                prof.city = city.trim();
-                prof.address = address.trim();
-            }
-            window.renderProfessionalHome(id);
+        services[sIndex] = {
+            ...s,
+            name: newName.trim() || s.name,
+            description: newDesc.trim(),
+            price: newPrice.trim() || s.price,
+            duration: parseInt(newDuration, 10) || s.duration
+        };
+
+        if (supabaseClient && !userId.startsWith('prof-')) {
+            await supabaseClient.from('profiles').update({ services: services }).eq('id', userId);
         }
+        localStorage.setItem('local_services_' + userId, JSON.stringify(services));
+        const prof = DATA.professionals.find(p => p.id === userId);
+        if (prof) prof.services = services;
+        window.renderProfessionalHome(userId);
     };
 
     // --- Home Renders (Public Profiles) ---
@@ -3670,10 +3564,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (id.startsWith('prof-')) {
                 prof = DATA.professionals.find(p => p.id === id);
             } else {
-                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-                if (!uuidRegex.test(id)) {
-                    throw new Error("ID de profissional inválido (formato UUID incorreto)");
-                }
                 const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', id).single();
                 if (error) throw error;
                 prof = data;
@@ -3721,30 +3611,19 @@ document.addEventListener('DOMContentLoaded', () => {
                    </div>`;
 
             const displayedServices = (prof.services || []).slice(0, displayLimit);
-            const servicesHtml = displayedServices.map(s => {
-                let imagesHtml = '';
-                if (s.images && s.images.length > 0) {
-                    imagesHtml = `<div style="display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; padding-bottom: 5px;">
-                        ${s.images.map(img => `<img src="${img}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; border: 1px solid #333; flex-shrink: 0;" onclick="window.open('${img}', '_blank')">`).join('')}
-                    </div>`;
-                }
-                
-                return `
-                <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <div style="flex: 1; padding-right: 1rem;">
-                            <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
-                            <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
-                            <div style="color: #555; font-size: 0.7rem; font-weight: 700; margin-top: 4px;">🕒 ${s.duration || 30} min</div>
-                        </div>
-                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-                            <div style="color: #FCD34D; font-weight: 900; font-size: 1rem; white-space: nowrap;">R$ ${s.price}</div>
-                            ${isOwnerEditing ? `<button onclick="window.editCartaoService('${s.id}')" style="background: rgba(255,255,255,0.1); color: #fff; border:none; border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">✏️ Editar</button>` : ''}
-                        </div>
+            const servicesHtml = displayedServices.map(s => `
+                <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="flex: 1; padding-right: 1rem;">
+                        <div style="font-weight: 800; color: #fff; font-size: 0.95rem;">${s.name}</div>
+                        <div style="color: #666; font-size: 0.75rem; margin-top: 4px;">${s.description || ''}</div>
+                        <div style="color: #555; font-size: 0.7rem; font-weight: 700; margin-top: 4px;">🕒 ${s.duration || 30} min</div>
                     </div>
-                    ${imagesHtml}
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                        <div style="color: #FCD34D; font-weight: 900; font-size: 1rem; white-space: nowrap;">R$ ${s.price}</div>
+                        ${isOwnerEditing ? `<button onclick="window.editCartaoService('${s.id}')" style="background: rgba(255,255,255,0.1); color: #fff; border:none; border-radius: 8px; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">✏️ Editar</button>` : ''}
+                    </div>
                 </div>
-            `}).join('');
+            `).join('');
 
             // Vitrine HTML for Plus users
             let vitrineHtml = '';
@@ -3851,7 +3730,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             : '';
                         return `
                         <div style="margin-top: 2rem; text-align: center;">
-                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">MODO DE ATENDIMENTO ${isOwnerEditing ? `<span onclick="hideOverlay('professional-home'); showOverlay('config-cartao-modal')" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
+                            <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">MODO DE ATENDIMENTO</h4>
                             <div style="background: rgba(168, 85, 247, 0.08); padding: 1rem 1.25rem; border-radius: 16px; border: 1px solid rgba(168, 85, 247, 0.2); display: flex; flex-direction: column; align-items: center; gap: 4px;">
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span style="font-size: 1.4rem;">${info.icon}</span>
@@ -3863,7 +3742,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })()}
 
                     <div style="margin-top: 2rem; text-align: center; padding-bottom: 150px;">
-                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO ${isOwnerEditing ? `<span onclick="window.editCartaoLocalizacao()" style="cursor:pointer; font-size: 1.1rem; margin-left: 5px;">✏️</span>` : ''}</h4>
+                        <h4 style="color: #fff; font-size: 0.9rem; font-weight: 800; margin-bottom: 1rem; letter-spacing: 1px;">LOCALIZAÇÃO</h4>
                         <div style="background: #111; padding: 1.25rem; border-radius: 20px; border: 1px solid #222; display: flex; align-items: center; gap: 1rem; text-align: left; justify-content: flex-start;">
                             <div style="font-size: 1.5rem;">📍</div>
                             <div>
@@ -8692,7 +8571,7 @@ window.renderAgendamentoScreen = async function() {
         todayLocal.setHours(0, 0, 0, 0);
         
         container.innerHTML = `
-            <div style="flex: 1; display: flex; flex-direction: column; margin-top: 10vh;">
+            <div style="flex: 1; display: flex; flex-direction: column;">
                 <h4 style="margin: 0 0 1rem 0; color: #fff; font-size: 1.1rem; text-align: center;">Agenda de Cortes Marcados</h4>
                 <div id="prof-appointments-list" style="display: flex; flex-direction: column; gap: 10px;">
                     <div style="text-align:center; padding: 2rem;"><span class="loader-mini"></span></div>

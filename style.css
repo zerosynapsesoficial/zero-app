@@ -2920,23 +2920,4 @@ a, button, .chip, .menu-btn, .type-card, .category-icon, .prof-card, .dash-card,
     color: #000000 !important;
 }
 
-/* Configurar Cartão de Visita - Custom Colors & Theme Responses */
-#menu-item-config-cartao .outline-icon {
-    filter: brightness(0) invert(1) !important;
-}
-
-.light-theme #menu-item-config-cartao .outline-icon {
-    filter: brightness(0) !important;
-}
-
-/* Full Screen Visitation Card (Professional Profile Home) */
-#professional-home.screen.overlay {
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    border-radius: 0px !important;
-    border: none !important;
-}
-
 
